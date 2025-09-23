@@ -8,46 +8,80 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client
 
 const app = express();
 
-// CORS Configuration
+// CORS Configuration with enhanced options
 app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:5173',
     'https://pariksha-serverless.vercel.app',
     process.env.FRONTEND_URL
-  ],
+  ].filter(Boolean),
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Database connection with caching for serverless
+// Enhanced Database connection for serverless with better caching
 let cachedDb = null;
+let connectionPromise = null;
+
 const connectDB = async () => {
+  // Return cached connection if available and healthy
   if (cachedDb && mongoose.connection.readyState === 1) {
     return cachedDb;
   }
-  
+
+  // Return existing connection promise if connection is in progress
+  if (connectionPromise) {
+    return connectionPromise;
+  }
+
+  // Validate environment variables
   if (!process.env.MONGO_URI) {
     throw new Error('MONGO_URI environment variable is not set');
   }
-  
+
+  console.log('Establishing new MongoDB connection...');
+
+  // Create new connection promise with enhanced options
+  connectionPromise = mongoose.connect(process.env.MONGO_URI, {
+    bufferCommands: false,
+    maxPoolSize: 10,
+    serverSelectionTimeoutMS: 15000, // Increased timeout
+    socketTimeoutMS: 45000,
+    connectTimeoutMS: 15000,
+    maxIdleTimeMS: 30000,
+    retryWrites: true,
+    retryReads: true,
+  });
+
   try {
-    const db = await mongoose.connect(process.env.MONGO_URI, {
-      bufferCommands: false,
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    });
+    cachedDb = await connectionPromise;
+    console.log('✅ MongoDB Atlas connected successfully');
     
-    cachedDb = db;
-    console.log('Connected to MongoDB Atlas');
-    return db;
+    // Handle connection events
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err);
+      cachedDb = null;
+      connectionPromise = null;
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.log('🔌 MongoDB disconnected');
+      cachedDb = null;
+      connectionPromise = null;
+    });
+
+    return cachedDb;
   } catch (error) {
-    console.error('Database connection failed:', error);
+    console.error('❌ Database connection failed:', error);
+    cachedDb = null;
+    connectionPromise = null;
     throw error;
   }
 };
@@ -85,17 +119,23 @@ paperSchema.index({ class: 1, semester: 1, subject: 1 });
 const User = mongoose.models.User || mongoose.model('User', userSchema);
 const Paper = mongoose.models.Paper || mongoose.model('Paper', paperSchema);
 
-// R2 Configuration
-const r2Client = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
-  },
-  forcePathStyle: true,
-  signatureVersion: "v4",
-});
+// R2 Configuration with lazy initialization
+let r2Client = null;
+const getR2Client = () => {
+  if (!r2Client && process.env.R2_ENDPOINT) {
+    r2Client = new S3Client({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+      },
+      forcePathStyle: true,
+      signatureVersion: "v4",
+    });
+  }
+  return r2Client;
+};
 
 // Utility functions
 const asyncHandler = (fn) => (req, res, next) => {
@@ -133,6 +173,11 @@ const generatePaperFilename = (paperTitle) => {
 
 const uploadToR2 = async (fileBuffer, fileName, mimeType) => {
   try {
+    const client = getR2Client();
+    if (!client) {
+      throw new Error('R2 client not configured - missing environment variables');
+    }
+
     const command = new PutObjectCommand({
       Bucket: process.env.R2_BUCKET,
       Key: fileName,
@@ -140,11 +185,30 @@ const uploadToR2 = async (fileBuffer, fileName, mimeType) => {
       ContentType: mimeType,
     });
     
-    await r2Client.send(command);
+    await client.send(command);
     return `${process.env.R2_PUBLIC_URL}/${fileName}`;
   } catch (error) {
     console.error("R2 upload error:", error);
     throw new Error("Failed to upload file to cloud storage");
+  }
+};
+
+const deleteFromR2 = async (fileName) => {
+  try {
+    const client = getR2Client();
+    if (!client) return false;
+
+    const command = new DeleteObjectCommand({
+      Bucket: process.env.R2_BUCKET,
+      Key: fileName
+    });
+
+    await client.send(command);
+    console.log(`Successfully deleted file: ${fileName}`);
+    return true;
+  } catch (error) {
+    console.error(`R2 delete error for ${fileName}:`, error);
+    return false;
   }
 };
 
@@ -158,21 +222,25 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
 
-// Auth middleware
+// Enhanced Auth middleware with better error handling
 const auth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ 
       success: false, 
-      message: "You Are Not Logged In" 
+      message: "Authentication required" 
     });
   }
 
   const token = authHeader.split(" ")[1];
   try {
+    if (!process.env.JWT_SECRET) {
+      throw new Error('JWT_SECRET not configured');
+    }
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = decoded.userId;
     
@@ -188,105 +256,224 @@ const auth = async (req, res, next) => {
     next();
   } catch (err) {
     return res.status(401).json({ 
-      message: "Invalid Token or Expired Token" 
+      success: false,
+      message: "Invalid or expired token" 
     });
   }
+};
+
+// Optional auth middleware (for download route)
+const optionalAuth = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.userId);
+      if (user) {
+        req.userId = decoded.userId;
+        req.user = user;
+      }
+    } catch (err) {
+      // Continue without auth if token is invalid
+    }
+  }
+  next();
 };
 
 // Admin auth middleware
 const adminAuth = async (req, res, next) => {
   const adminEmails = ["nitinemailss@gmail.com"];
   
-  const user = await User.findById(req.userId);
-  if (!user) {
+  if (!req.user) {
     return res.status(401).json({
       success: false,
-      message: "Admin Not Found"
+      message: "User authentication required"
     });
   }
 
-  if (!adminEmails.includes(user.email)) {
+  if (!adminEmails.includes(req.user.email)) {
     return res.status(403).json({
       success: false,
-      message: "Access Denied, Admin Privileges Required"
+      message: "Access Denied - Admin Privileges Required"
     });
   }
 
-  req.user = user;
   next();
 };
 
-// Database connection middleware
+// Enhanced database connection middleware
 app.use(async (req, res, next) => {
   try {
     await connectDB();
     next();
   } catch (error) {
-    console.error('Database connection error:', error);
+    console.error('Database connection middleware error:', error);
+    
+    const errorMessage = error.message || 'Database connection failed';
+    const isAtlasError = errorMessage.includes('MongoDB Atlas cluster');
+    
     res.status(500).json({
       success: false,
       message: 'Database connection failed',
-      error: error.message
+      error: isAtlasError ? 
+        'Database temporarily unavailable. Please check your connection and try again.' : 
+        errorMessage,
+      code: isAtlasError ? 'DB_CONNECTION_ERROR' : 'UNKNOWN_DB_ERROR',
+      ...(process.env.NODE_ENV === 'development' && { 
+        fullError: error.message,
+        stack: error.stack 
+      })
     });
   }
 });
 
 // ROUTES
 
-// Health check
-app.get('/api', (req, res) => {
+// Health check with comprehensive status
+app.get('/api', asyncHandler(async (req, res) => {
+  const dbStatus = mongoose.connection.readyState;
+  const dbStates = {
+    0: 'disconnected',
+    1: 'connected', 
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+
   res.json({ 
     message: 'Pariksha API is running on Vercel!', 
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    database: {
+      status: dbStates[dbStatus] || 'unknown',
+      state: dbStatus
+    },
+    config: {
+      mongoUri: process.env.MONGO_URI ? 'Set' : 'Not Set',
+      jwtSecret: process.env.JWT_SECRET ? 'Set' : 'Not Set',
+      r2Configured: !!(process.env.R2_ENDPOINT && process.env.R2_ACCESS_KEY_ID)
+    }
   });
-});
+}));
 
-// Home stats
+// Home stats with comprehensive error handling
 app.get('/api/stats', asyncHandler(async (req, res) => {
-  const [totalPapers, totalUsers, totalDownloads] = await Promise.all([
-    Paper.countDocuments({ status: 'approved' }),
-    User.countDocuments(),
-    Paper.aggregate([
-      { $match: { status: 'approved' } },
-      { $group: { _id: null, totalDownloads: { $sum: '$downloadCount' } } }
-    ]).then(result => result[0]?.totalDownloads || 0)
-  ]);
+  try {
+    // Ensure connection before queries
+    if (mongoose.connection.readyState !== 1) {
+      await connectDB();
+    }
 
-  res.json({
-    success: true,
-    data: { totalPapers, totalUsers, totalDownloads }
-  });
+    const [totalPapers, totalUsers, totalDownloads] = await Promise.all([
+      Paper.countDocuments({ status: 'approved' }).catch(() => 0),
+      User.countDocuments().catch(() => 0),
+      Paper.aggregate([
+        { $match: { status: 'approved' } },
+        { $group: { _id: null, totalDownloads: { $sum: '$downloadCount' } } }
+      ]).then(result => result[0]?.totalDownloads || 0).catch(() => 0)
+    ]);
+
+    res.json({
+      success: true,
+      data: { 
+        totalPapers: totalPapers || 0, 
+        totalUsers: totalUsers || 0, 
+        totalDownloads: totalDownloads || 0 
+      }
+    });
+  } catch (error) {
+    console.error('Stats error:', error);
+    
+    // Return fallback data for graceful degradation
+    res.json({
+      success: true,
+      data: { 
+        totalPapers: 0, 
+        totalUsers: 0, 
+        totalDownloads: 0 
+      },
+      fallback: true,
+      note: 'Showing fallback data due to temporary database issue'
+    });
+  }
+}));
+
+// Recent papers endpoint
+app.get('/api/recent', asyncHandler(async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      await connectDB();
+    }
+
+    const recentPapers = await Paper.find({ status: 'approved' })
+      .populate('uploadedBy', 'name rollNumber')
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    res.json({
+      success: true,
+      data: { papers: recentPapers || [] }
+    });
+  } catch (error) {
+    console.error('Error fetching recent papers:', error);
+    res.json({
+      success: true,
+      data: { papers: [] },
+      fallback: true
+    });
+  }
 }));
 
 // Auth routes
 app.post('/api/auth/register', asyncHandler(async (req, res) => {
   const { name, email, rollNumber, class: studentClass, semester, year, password } = req.body;
 
-  const existingUser = await User.findOne({ $or: [{ email }, { rollNumber }] });
+  // Validation
+  if (!name || !email || !rollNumber || !studentClass || !semester || !year || !password) {
+    return res.status(400).json({
+      success: false,
+      message: "All fields are required"
+    });
+  }
+
+  const existingUser = await User.findOne({ 
+    $or: [{ email: email.toLowerCase() }, { rollNumber: rollNumber.toUpperCase() }] 
+  });
+
   if (existingUser) {
     return res.status(400).json({
-      message: "Student Already Exist With this Email or Roll number"
+      success: false,
+      message: "Student already exists with this email or roll number"
     });
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
   
   const newUser = new User({
-    name, email, rollNumber, class: studentClass, year, semester,
+    name: name.trim(),
+    email: email.toLowerCase(),
+    rollNumber: rollNumber.toUpperCase(),
+    class: studentClass,
+    year,
+    semester,
     password: hashedPassword
   });
 
   await newUser.save();
 
   const userResponse = {
-    id: newUser._id, name: newUser.name, email: newUser.email,
-    rollNumber: newUser.rollNumber, class: newUser.class,
-    year: newUser.year, semester: newUser.semester
+    id: newUser._id,
+    name: newUser.name,
+    email: newUser.email,
+    rollNumber: newUser.rollNumber,
+    class: newUser.class,
+    year: newUser.year,
+    semester: newUser.semester
   };
 
   res.status(201).json({
-    message: "User Registered Successfully",
+    success: true,
+    message: "User registered successfully",
     user: userResponse
   });
 }));
@@ -294,72 +481,109 @@ app.post('/api/auth/register', asyncHandler(async (req, res) => {
 app.post('/api/auth/login', asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
+  if (!email || !password) {
+    return res.status(400).json({ 
+      success: false,
+      message: "Email and password are required" 
+    });
+  }
+
+  const user = await User.findOne({ email: email.toLowerCase() });
   if (!user || !await bcrypt.compare(password, user.password)) {
-    return res.status(400).json({ message: "Invalid Email or Password" });
+    return res.status(400).json({ 
+      success: false,
+      message: "Invalid email or password" 
+    });
   }
 
   const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
   
   const userResponse = {
-    id: user._id, name: user.name, email: user.email,
-    rollNumber: user.rollNumber, class: user.class,
-    year: user.year, semester: user.semester
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    rollNumber: user.rollNumber,
+    class: user.class,
+    year: user.year,
+    semester: user.semester
   };
 
   res.json({
-    message: "Login Successful",
+    success: true,
+    message: "Login successful",
     token,
     user: userResponse
   });
 }));
 
-// Paper routes
+// Paper routes with enhanced error handling
 app.get('/api/papers/filters', asyncHandler(async (req, res) => {
-  const { search, subject, class: className, semester, examType, year, sortBy } = req.query;
-  let query = { status: 'approved' };
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      await connectDB();
+    }
 
-  if (search && search.trim()) {
-    query.$or = [
-      { title: { $regex: search, $options: 'i' } },
-      { subject: { $regex: search, $options: 'i' } },
-      { tags: { $in: [new RegExp(search, 'i')] } }
-    ];
+    const { search, subject, class: className, semester, examType, year, sortBy } = req.query;
+    let query = { status: 'approved' };
+
+    // Build search query
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      query.$or = [
+        { title: searchRegex },
+        { subject: searchRegex },
+        { tags: { $in: [searchRegex] } }
+      ];
+    }
+
+    // Apply filters
+    if (subject && subject.trim()) query.subject = { $regex: subject.trim(), $options: 'i' };
+    if (className && className.trim()) query.class = { $regex: className.trim(), $options: 'i' };
+    if (semester && semester.trim()) query.semester = semester.trim();
+    if (examType && examType.trim()) query.examType = examType.trim();
+    if (year && year.trim()) query.year = year.trim();
+
+    // Sorting
+    let sortQuery = { createdAt: -1 };
+    switch (sortBy) {
+      case 'newest': sortQuery = { createdAt: -1 }; break;
+      case 'popular': sortQuery = { downloadCount: -1, createdAt: -1 }; break;
+      case 'title': sortQuery = { title: 1 }; break;
+      default: sortQuery = { createdAt: -1 };
+    }
+
+    const papers = await Paper.find(query)
+      .populate('uploadedBy', 'name rollNumber')
+      .sort(sortQuery)
+      .limit(100);
+
+    res.json({
+      success: true,
+      data: { papers: papers || [], total: papers?.length || 0 }
+    });
+  } catch (error) {
+    console.error('Papers filter error:', error);
+    res.json({
+      success: true,
+      data: { papers: [], total: 0 },
+      fallback: true,
+      error: 'Temporary error fetching papers'
+    });
   }
-
-  if (subject && subject.trim()) query.subject = { $regex: subject, $options: 'i' };
-  if (className && className.trim()) query.class = { $regex: className, $options: 'i' };
-  if (semester && semester.trim()) query.semester = semester;
-  if (examType && examType.trim()) query.examType = examType;
-  if (year && year.trim()) query.year = year;
-
-  let sortQuery = { createdAt: -1 };
-  switch (sortBy) {
-    case 'newest': sortQuery = { createdAt: -1 }; break;
-    case 'popular': sortQuery = { downloadCount: -1, createdAt: -1 }; break;
-    case 'title': sortQuery = { title: 1 }; break;
-    default: sortQuery = { createdAt: -1 };
-  }
-
-  const papers = await Paper.find(query)
-    .populate('uploadedBy', 'name rollNumber')
-    .sort(sortQuery)
-    .limit(100);
-
-  res.json({
-    success: true,
-    data: { papers: papers, total: papers.length }
-  });
 }));
 
 app.get('/api/papers/filter-options', asyncHandler(async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      await connectDB();
+    }
+
     const [subjects, classes, semesters, examTypes, years] = await Promise.all([
-      Paper.distinct('subject', { status: 'approved' }),
-      Paper.distinct('class', { status: 'approved' }),
-      Paper.distinct('semester', { status: 'approved' }),
-      Paper.distinct('examType', { status: 'approved' }),
-      Paper.distinct('year', { status: 'approved' })
+      Paper.distinct('subject', { status: 'approved' }).catch(() => []),
+      Paper.distinct('class', { status: 'approved' }).catch(() => []),
+      Paper.distinct('semester', { status: 'approved' }).catch(() => []),
+      Paper.distinct('examType', { status: 'approved' }).catch(() => ['Mst-1', 'Mst-2', 'Final']),
+      Paper.distinct('year', { status: 'approved' }).catch(() => [])
     ]);
 
     res.json({
@@ -374,7 +598,6 @@ app.get('/api/papers/filter-options', asyncHandler(async (req, res) => {
     });
   } catch (error) {
     console.error('Filter options error:', error);
-    // Return fallback data
     res.json({
       success: true,
       data: {
@@ -383,7 +606,8 @@ app.get('/api/papers/filter-options', asyncHandler(async (req, res) => {
         semesters: [],
         examTypes: ['Mst-1', 'Mst-2', 'Final'],
         years: []
-      }
+      },
+      fallback: true
     });
   }
 }));
@@ -395,17 +619,23 @@ app.get('/api/papers/:id', validateObjectId, asyncHandler(async (req, res) => {
   );
 
   if (!paper || paper.status !== "approved") {
-    return res.status(404).json({ success: false, message: "Paper Not Found" });
+    return res.status(404).json({ 
+      success: false, 
+      message: "Paper not found or not available" 
+    });
   }
 
   res.json({ success: true, data: paper });
 }));
 
-app.post('/api/papers/:id/download', validateObjectId, asyncHandler(async (req, res) => {
+app.post('/api/papers/:id/download', validateObjectId, optionalAuth, asyncHandler(async (req, res) => {
   const paper = await Paper.findById(req.params.id);
 
   if (!paper) {
-    return res.status(404).json({ success: false, message: "Paper not found" });
+    return res.status(404).json({ 
+      success: false, 
+      message: "Paper not found" 
+    });
   }
 
   // Check if user is admin
@@ -419,7 +649,10 @@ app.post('/api/papers/:id/download', validateObjectId, asyncHandler(async (req, 
   }
 
   if (!paper.fileUrl) {
-    return res.status(404).json({ success: false, message: "File URL not found" });
+    return res.status(404).json({ 
+      success: false, 
+      message: "File not available" 
+    });
   }
 
   // Only increment download count for approved papers (not admin previews)
@@ -447,25 +680,48 @@ app.post('/api/papers/:id/download', validateObjectId, asyncHandler(async (req, 
 }));
 
 app.get('/api/papers', asyncHandler(async (req, res) => {
-  const papers = await Paper.find({ status: "approved" })
-    .populate("uploadedBy", "name rollNumber")
-    .sort({ createdAt: -1 })
-    .limit(50);
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      await connectDB();
+    }
 
-  res.json({
-    success: true,
-    count: papers.length,
-    data: { papers }
-  });
+    const papers = await Paper.find({ status: "approved" })
+      .populate("uploadedBy", "name rollNumber")
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    res.json({
+      success: true,
+      count: papers?.length || 0,
+      data: { papers: papers || [] }
+    });
+  } catch (error) {
+    console.error('Papers error:', error);
+    res.json({
+      success: true,
+      count: 0,
+      data: { papers: [] },
+      fallback: true
+    });
+  }
 }));
 
-// Upload route
+// Upload route with enhanced validation
 app.post('/api/papers/upload', auth, upload.single('file'), asyncHandler(async (req, res) => {
   const { title, subject, class: paperClass, semester, year, examType, tags } = req.body;
 
-  if (!req.file) throw new Error("No file uploaded.");
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: "No file uploaded"
+    });
+  }
+
   if (!title || !subject || !paperClass || !semester || !year || !examType) {
-    throw new Error("Missing required fields.");
+    return res.status(400).json({
+      success: false,
+      message: "All required fields must be provided"
+    });
   }
 
   const userId = req.userId;
@@ -473,16 +729,24 @@ app.post('/api/papers/upload', auth, upload.single('file'), asyncHandler(async (
   const fileUrl = await uploadToR2(req.file.buffer, fileName, req.file.mimetype);
 
   const paper = await Paper.create({
-    title, subject, class: paperClass, semester, year, examType,
-    fileName, fileUrl, uploadedBy: userId,
-    tags: tags ? JSON.parse(tags) : []
+    title: title.trim(),
+    subject: subject.trim(),
+    class: paperClass,
+    semester,
+    year,
+    examType,
+    fileName,
+    fileUrl,
+    uploadedBy: userId,
+    tags: tags ? JSON.parse(tags) : [],
+    status: 'pending'
   });
 
   await User.findByIdAndUpdate(userId, { $inc: { uploadCount: 1 } });
 
   res.status(201).json({
     success: true,
-    message: "Upload Successful! Waiting For Approval",
+    message: "Paper uploaded successfully! Waiting for admin approval",
     data: { paper }
   });
 }));
@@ -497,18 +761,40 @@ app.get('/api/users/me/dashboard', auth, asyncHandler(async (req, res) => {
     .populate('uploadedBy', 'name class semester rollNumber')
     .sort({ createdAt: -1 });
 
-  const total = myPapers.length;
-  const pending = myPapers.filter(p => p.status === "pending").length;
-  const approved = myPapers.filter(p => p.status === "approved").length;
-  const rejected = myPapers.filter(p => p.status === "rejected").length;
-  const totalDownloads = myPapers.reduce((sum, p) => sum + p.downloadCount, 0);
+  const stats = {
+    total: myPapers.length,
+    pending: myPapers.filter(p => p.status === "pending").length,
+    approved: myPapers.filter(p => p.status === "approved").length,
+    rejected: myPapers.filter(p => p.status === "rejected").length,
+    totalDownloads: myPapers.reduce((sum, p) => sum + p.downloadCount, 0)
+  };
 
   res.json({
     success: true,
-    data: {
-      stats: { total, pending, approved, rejected, totalDownloads },
-      papers: myPapers
-    }
+    data: { stats, papers: myPapers }
+  });
+}));
+
+app.delete('/api/users/me/paper/:id', auth, validateObjectId, asyncHandler(async (req, res) => {
+  const paper = await Paper.findById(req.params.id);
+
+  if (!paper || paper.uploadedBy.toString() !== req.userId) {
+    return res.status(404).json({ 
+      success: false, 
+      message: "Paper not found or access denied" 
+    });
+  }
+
+  // Delete file from R2 if exists
+  if (paper.fileName) {
+    await deleteFromR2(paper.fileName);
+  }
+
+  await Paper.findByIdAndDelete(req.params.id);
+
+  res.json({
+    success: true,
+    message: "Paper deleted successfully"
   });
 }));
 
@@ -530,7 +816,12 @@ app.get('/api/admin/stats', auth, adminAuth, asyncHandler(async (req, res) => {
     success: true,
     data: {
       users: totalUsers,
-      papers: { total: totalPapers, pending: pendingPapers, approved: approvedPapers, rejected: rejectedPapers },
+      papers: { 
+        total: totalPapers, 
+        pending: pendingPapers, 
+        approved: approvedPapers, 
+        rejected: rejectedPapers 
+      },
       downloads: totalDownloads
     }
   });
@@ -551,7 +842,7 @@ app.get('/api/admin/pending-papers', auth, adminAuth, asyncHandler(async (req, r
 app.get('/api/admin/papers', auth, adminAuth, asyncHandler(async (req, res) => {
   const { status } = req.query;
   const filters = {};
-  if (status) { filters.status = status; }
+  if (status) filters.status = status;
 
   const papers = await Paper.find(filters)
     .populate("uploadedBy", "name email rollNumber class semester")
@@ -572,7 +863,10 @@ app.put('/api/admin/papers/:id/approve', auth, adminAuth, validateObjectId, asyn
   ).populate('uploadedBy', 'name email rollNumber');
 
   if (!paper) {
-    return res.status(404).json({ success: false, message: 'Paper not found' });
+    return res.status(404).json({ 
+      success: false, 
+      message: 'Paper not found' 
+    });
   }
 
   res.json({
@@ -587,18 +881,47 @@ app.put('/api/admin/papers/:id/reject', auth, adminAuth, validateObjectId, async
   
   const paper = await Paper.findByIdAndUpdate(
     req.params.id,
-    { status: 'rejected', rejectionReason: reason || 'No reason provided' },
+    { 
+      status: 'rejected', 
+      rejectionReason: reason?.trim() || 'No reason provided' 
+    },
     { new: true }
   ).populate('uploadedBy', 'name email rollNumber');
 
   if (!paper) {
-    return res.status(404).json({ success: false, message: 'Paper not found' });
+    return res.status(404).json({ 
+      success: false, 
+      message: 'Paper not found' 
+    });
   }
 
   res.json({
     success: true,
     message: 'Paper rejected successfully',
     data: { paper }
+  });
+}));
+
+app.delete('/api/admin/papers/:id', auth, adminAuth, validateObjectId, asyncHandler(async (req, res) => {
+  const paper = await Paper.findById(req.params.id);
+  
+  if (!paper) {
+    return res.status(404).json({ 
+      success: false, 
+      message: 'Paper not found' 
+    });
+  }
+
+  // Delete from R2 if file exists
+  if (paper.fileName) {
+    await deleteFromR2(paper.fileName);
+  }
+
+  await Paper.findByIdAndDelete(req.params.id);
+
+  res.json({
+    success: true,
+    message: 'Paper deleted successfully'
   });
 }));
 
@@ -625,7 +948,7 @@ app.get('/api/admin/papers/:id/preview', auth, adminAuth, validateObjectId, asyn
   });
 }));
 
-// Admin download paper
+// Admin download paper for preview
 app.post('/api/admin/papers/:id/download', auth, adminAuth, validateObjectId, asyncHandler(async (req, res) => {
   const paper = await Paper.findById(req.params.id);
 
@@ -639,10 +962,11 @@ app.post('/api/admin/papers/:id/download', auth, adminAuth, validateObjectId, as
   if (!paper.fileUrl) {
     return res.status(404).json({
       success: false,
-      message: 'File URL not found'
+      message: 'File not available'
     });
   }
 
+  // Don't increment download count for admin previews
   res.json({
     success: true,
     message: 'Admin download access granted',
@@ -656,21 +980,71 @@ app.post('/api/admin/papers/:id/download', auth, adminAuth, validateObjectId, as
   });
 }));
 
-// Error handling middleware
+// Enhanced error handling middleware
 app.use((error, req, res, next) => {
-  console.error('API Error:', error);
+  console.error('API Error:', {
+    message: error.message,
+    stack: error.stack,
+    url: req.url,
+    method: req.method,
+    body: req.body,
+    timestamp: new Date().toISOString()
+  });
+
+  // Handle specific error types
+  if (error.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation error',
+      errors: Object.values(error.errors).map(err => err.message)
+    });
+  }
+
+  if (error.code === 11000) {
+    return res.status(400).json({
+      success: false,
+      message: 'Duplicate entry error',
+      field: Object.keys(error.keyPattern)[0]
+    });
+  }
+
+  if (error.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid ID format'
+    });
+  }
+
+  if (error.name === 'MulterError') {
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'File upload error'
+    });
+  }
+
   res.status(500).json({
     success: false,
     message: error.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+    ...(process.env.NODE_ENV === 'development' && { 
+      stack: error.stack,
+      details: error 
+    })
   });
 });
 
-// 404 handler
+// 404 handler - must be last
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: `Route ${req.originalUrl} not found`
+    message: `Route ${req.method} ${req.originalUrl} not found`,
+    availableRoutes: [
+      'GET /api',
+      'GET /api/stats',
+      'POST /api/auth/login',
+      'POST /api/auth/register',
+      'GET /api/papers',
+      'GET /api/papers/filters'
+    ]
   });
 });
 
