@@ -7,6 +7,35 @@ import multer from 'multer';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 const app = express();
+// Enhanced middleware for better JSON parsing
+app.use(express.json({ 
+  limit: '50mb',
+  type: ['application/json', 'text/plain']
+}));
+
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: '50mb',
+  type: 'application/x-www-form-urlencoded'
+}));
+
+// Add middleware to log and fix content-type issues
+app.use((req, res, next) => {
+  console.log('Request details:', {
+    method: req.method,
+    url: req.url,
+    contentType: req.headers['content-type'],
+    bodyKeys: Object.keys(req.body || {}),
+    hasBody: !!req.body
+  });
+
+  // Fix missing content-type for JSON requests
+  if (req.url.includes('/auth/') && !req.headers['content-type']) {
+    req.headers['content-type'] = 'application/json';
+  }
+
+  next();
+});
 
 // CORS Configuration with enhanced options
 app.use(cors({
@@ -551,7 +580,7 @@ app.post('/api/auth/register', asyncHandler(async (req, res) => {
 }));
 
 
-// Enhanced login route with detailed validation and debugging
+// Fixed login route for Roll Number + Password authentication
 app.post('/api/auth/login', asyncHandler(async (req, res) => {
   // Log incoming request for debugging
   console.log('Login request received:', {
@@ -560,10 +589,10 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
     contentType: req.headers['content-type']
   });
 
-  const { email, password } = req.body;
+  const { rollNumber, password, email } = req.body;
 
   // Enhanced validation with specific error messages
-  if (!req.body) {
+  if (!req.body || Object.keys(req.body).length === 0) {
     console.log('No request body found');
     return res.status(400).json({ 
       success: false,
@@ -572,13 +601,16 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
     });
   }
 
-  if (!email) {
-    console.log('Email missing from request:', req.body);
+  // Support both rollNumber and email login (rollNumber is primary)
+  const loginField = rollNumber || email;
+
+  if (!loginField) {
+    console.log('Roll number/email missing from request:', req.body);
     return res.status(400).json({ 
       success: false,
-      message: "Email is required",
-      field: "email",
-      received: { email: email, hasPassword: !!password }
+      message: "Roll number is required",
+      field: "rollNumber",
+      received: { rollNumber: rollNumber, email: email, hasPassword: !!password }
     });
   }
 
@@ -588,22 +620,13 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
       success: false,
       message: "Password is required", 
       field: "password",
-      received: { hasEmail: !!email, password: password }
+      received: { loginField: loginField, password: password ? '[PROVIDED]' : '[MISSING]' }
     });
   }
 
-  // Trim and validate email format
-  const trimmedEmail = email.trim();
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // Validate roll number format (basic validation)
+  const trimmedLoginField = loginField.trim().toUpperCase();
   
-  if (!emailRegex.test(trimmedEmail)) {
-    return res.status(400).json({ 
-      success: false,
-      message: "Please enter a valid email address",
-      field: "email"
-    });
-  }
-
   if (password.length < 6) {
     return res.status(400).json({ 
       success: false,
@@ -613,14 +636,24 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
   }
 
   try {
-    // Find user by email (case insensitive)
-    const user = await User.findOne({ email: trimmedEmail.toLowerCase() });
+    // Find user by rollNumber (primary) or email (fallback)
+    let user;
+    
+    if (rollNumber) {
+      // Login with roll number
+      user = await User.findOne({ rollNumber: trimmedLoginField });
+      console.log('Searching for user with roll number:', trimmedLoginField);
+    } else {
+      // Login with email (fallback)
+      user = await User.findOne({ email: trimmedLoginField.toLowerCase() });
+      console.log('Searching for user with email:', trimmedLoginField.toLowerCase());
+    }
     
     if (!user) {
-      console.log('User not found for email:', trimmedEmail);
+      console.log('User not found for:', trimmedLoginField);
       return res.status(400).json({ 
         success: false,
-        message: "Invalid email or password",
+        message: rollNumber ? "Invalid roll number or password" : "Invalid email or password",
         debug: "User not found"
       });
     }
@@ -629,10 +662,10 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
     const isPasswordValid = await bcrypt.compare(password, user.password);
     
     if (!isPasswordValid) {
-      console.log('Invalid password for user:', trimmedEmail);
+      console.log('Invalid password for user:', trimmedLoginField);
       return res.status(400).json({ 
         success: false,
-        message: "Invalid email or password",
+        message: rollNumber ? "Invalid roll number or password" : "Invalid email or password",
         debug: "Password mismatch"
       });
     }
@@ -658,7 +691,7 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
       semester: user.semester
     };
 
-    console.log('Login successful for user:', trimmedEmail);
+    console.log('Login successful for user:', user.rollNumber);
 
     res.json({
       success: true,

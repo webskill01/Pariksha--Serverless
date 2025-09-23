@@ -1,19 +1,19 @@
-// Frontend/src/services/authService.js - Enhanced with better debugging
+// Frontend/src/services/authService.js - Fixed for Roll Number + Password
 import api from './api';
 
 export const authService = {
-  // Enhanced login with detailed logging
+  // Fixed login for Roll Number + Password
   login: async (credentials) => {
     try {
       console.log('Attempting login with:', {
-        email: credentials.email,
+        rollNumber: credentials.rollNumber,
         hasPassword: !!credentials.password,
         passwordLength: credentials.password?.length
       });
 
       // Validate frontend data before sending
-      if (!credentials.email || !credentials.password) {
-        throw new Error('Email and password are required');
+      if (!credentials.rollNumber || !credentials.password) {
+        throw new Error('Roll number and password are required');
       }
 
       if (credentials.password.length < 6) {
@@ -21,7 +21,7 @@ export const authService = {
       }
 
       const response = await api.post('/auth/login', {
-        email: credentials.email.trim(),
+        rollNumber: credentials.rollNumber.trim().toUpperCase(),
         password: credentials.password
       });
 
@@ -54,36 +54,13 @@ export const authService = {
     }
   },
 
-  // Enhanced register with validation
+  // Register remains the same as it uses all fields
   register: async (userData) => {
     try {
       console.log('Attempting registration with:', {
         ...userData,
         password: '[HIDDEN]'
       });
-
-      // Frontend validation
-      const errors = [];
-      
-      if (!userData.name || userData.name.trim().length < 2) {
-        errors.push('Name must be at least 2 characters long');
-      }
-      
-      if (!userData.email || !userData.email.includes('@')) {
-        errors.push('Please enter a valid email address');
-      }
-      
-      if (!userData.rollNumber || userData.rollNumber.trim().length === 0) {
-        errors.push('Roll number is required');
-      }
-      
-      if (!userData.password || userData.password.length < 6) {
-        errors.push('Password must be at least 6 characters long');
-      }
-      
-      if (errors.length > 0) {
-        throw { success: false, message: errors.join(', ') };
-      }
 
       const response = await api.post('/auth/register', userData);
       console.log('Registration response:', response.data);
@@ -95,7 +72,6 @@ export const authService = {
     }
   },
 
-  // Rest of your existing methods...
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
