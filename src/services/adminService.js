@@ -1,7 +1,6 @@
 // Frontend/src/services/adminService.js - Complete admin functionality
 import api from './api';
 import { toast } from 'react-toastify';
-import { getCleanFilename } from '../utils/downloadUtils';
 
 export const adminService = {
   // Get admin dashboard stats
@@ -34,7 +33,7 @@ export const adminService = {
     }
   },
 
-  // NEW: Preview paper (get paper details for admin)
+  // Preview paper (get paper details for admin)
   previewPaper: async (paperId) => {
     try {
       const response = await api.get(`/admin/papers/${paperId}/preview`);
@@ -44,7 +43,7 @@ export const adminService = {
     }
   },
 
-  // NEW: Admin download paper (for review before approval)
+  // Admin download paper (for review before approval)
   downloadPaperForPreview: async (paperId) => {
     try {
       const response = await api.post(`/admin/papers/${paperId}/download`);

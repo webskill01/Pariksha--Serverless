@@ -15,6 +15,7 @@ import {
 } from "@mui/icons-material";
 
 import { authService } from "../../services/authService";
+import { userService } from "../../services/userService";
 import { CompactPaperCard } from "../../components/ui/CompactPaperCard";
 
 // Compact Stats Card Component
@@ -105,7 +106,7 @@ function Dashboard() {
   // Fetch dashboard data from API
   const fetchDashboardData = async () => {
     try {
-      const response = await authService.getDashboard();
+      const response = await userService.getDashboard();
       setDashboardData(response);
     } catch (error) {
       console.error("Dashboard fetch error:", error);
@@ -129,7 +130,7 @@ function Dashboard() {
     }
 
     try {
-      await authService.deleteMyPaper(paperId);
+     await userService.deleteMyPaper(paperId);
       toast.success("Paper deleted successfully");
 
       // Refresh dashboard data
