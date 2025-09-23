@@ -1,100 +1,123 @@
-// Frontend/src/services/authService.js - Complete Fixed Version
-
-import api from './api'
+// Frontend/src/services/authService.js - Enhanced with better debugging
+import api from './api';
 
 export const authService = {
-  // Register new user
-  register: async (userData) => {
+  // Enhanced login with detailed logging
+  login: async (credentials) => {
     try {
-      const response = await api.post('/auth/register', userData)
-      return response.data
-    } catch (error) {
-      throw error.response?.data || { message: 'Registration failed' }
-    }
-  },
+      console.log('Attempting login with:', {
+        email: credentials.email,
+        hasPassword: !!credentials.password,
+        passwordLength: credentials.password?.length
+      });
 
-  // Login user with proper state management
- login: async (credentials) => {
-  try {
-    const response = await api.post('/auth/login', credentials);
-    
-    // Less strict checking
-    if (response.data && response.status === 200) {
-      const responseData = response.data;
-      
-      // Extract token and user from wherever they are in the response
-      const token = responseData.token || responseData.data?.token || responseData.accessToken;
-      const user = responseData.user || responseData.data?.user || responseData.userData;
-      if (token && user) {
-        localStorage.setItem('token', token);
-        localStorage.setItem('user', JSON.stringify(user));
-        window.dispatchEvent(new Event('storage'));
+      // Validate frontend data before sending
+      if (!credentials.email || !credentials.password) {
+        throw new Error('Email and password are required');
+      }
+
+      if (credentials.password.length < 6) {
+        throw new Error('Password must be at least 6 characters long');
+      }
+
+      const response = await api.post('/auth/login', {
+        email: credentials.email.trim(),
+        password: credentials.password
+      });
+
+      console.log('Login response:', response.data);
+
+      if (response.data && response.data.success) {
+        const { token, user } = response.data;
         
-        return {
-          success: true,
-          data: { token, user }
-        };
+        if (token && user) {
+          localStorage.setItem('token', token);
+          localStorage.setItem('user', JSON.stringify(user));
+          window.dispatchEvent(new Event('storage'));
+          return response.data;
+        } else {
+          throw new Error('Invalid response format from server');
+        }
+      } else {
+        throw new Error(response.data?.message || 'Login failed');
+      }
+    } catch (error) {
+      console.error('Login error details:', error);
+      
+      if (error.response?.data) {
+        throw error.response.data;
+      } else if (error.message) {
+        throw { success: false, message: error.message };
+      } else {
+        throw { success: false, message: 'Login failed. Please try again.' };
       }
     }
-    
-    throw new Error('Login failed - invalid credentials or server error');
-  } catch (error) {
-    throw error.response?.data || { message: error.message || 'Login failed' };
-  }
-},
-
-  // Logout with storage event
-  logout: () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    
-    // Trigger storage event for UI updates
-    window.dispatchEvent(new Event('storage'));
   },
 
-  // Get current user
+  // Enhanced register with validation
+  register: async (userData) => {
+    try {
+      console.log('Attempting registration with:', {
+        ...userData,
+        password: '[HIDDEN]'
+      });
+
+      // Frontend validation
+      const errors = [];
+      
+      if (!userData.name || userData.name.trim().length < 2) {
+        errors.push('Name must be at least 2 characters long');
+      }
+      
+      if (!userData.email || !userData.email.includes('@')) {
+        errors.push('Please enter a valid email address');
+      }
+      
+      if (!userData.rollNumber || userData.rollNumber.trim().length === 0) {
+        errors.push('Roll number is required');
+      }
+      
+      if (!userData.password || userData.password.length < 6) {
+        errors.push('Password must be at least 6 characters long');
+      }
+      
+      if (errors.length > 0) {
+        throw { success: false, message: errors.join(', ') };
+      }
+
+      const response = await api.post('/auth/register', userData);
+      console.log('Registration response:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('Registration error:', error);
+      throw error.response?.data || { success: false, message: 'Registration failed' };
+    }
+  },
+
+  // Rest of your existing methods...
+  logout: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.dispatchEvent(new Event('storage'));
+    window.location.href = '/auth/login';
+  },
+
   getCurrentUser: () => {
     try {
-      const user = localStorage.getItem('user')
-      return user ? JSON.parse(user) : null
+      const user = localStorage.getItem('user');
+      return user ? JSON.parse(user) : null;
     } catch (error) {
-      console.error('Error parsing user data:', error)
-      return null
+      console.error('Error parsing user data:', error);
+      return null;
     }
   },
 
-  // Check if user is authenticated
+  getToken: () => {
+    return localStorage.getItem('token');
+  },
+
   isAuthenticated: () => {
-    const token = localStorage.getItem('token')
-    const user = localStorage.getItem('user')
-    return !!(token && user)
-  },
-
-  // Check if user is admin
-  isAdmin: () => {
-    const user = authService.getCurrentUser()
-    const adminEmails = ["nitinemailss@gmail.com"]
-    return user && adminEmails.includes(user.email)
-  },
-
-  // Get user dashboard data
-  getDashboard: async () => {
-    try {
-      const response = await api.get('/users/me/dashboard')
-      return response.data
-    } catch (error) {
-      throw error.response?.data || { message: 'Failed to fetch dashboard data' }
-    }
-  },
-
-  // Delete user's own paper (only pending or rejected)
-  // Delete user's own paper (only pending or rejected)
-deleteMyPaper: async (paperId) => {
-  try {
-    const response = await api.delete(`/users/me/paper/${paperId}`); // Fixed endpoint
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || { message: 'Failed to delete paper' };
+    return !!localStorage.getItem('token');
   }
-}
-}
+};

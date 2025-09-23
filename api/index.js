@@ -425,96 +425,258 @@ app.get('/api/recent', asyncHandler(async (req, res) => {
 }));
 
 // Auth routes
+// Enhanced register route with comprehensive validation
 app.post('/api/auth/register', asyncHandler(async (req, res) => {
+  console.log('Register request received:', {
+    body: req.body,
+    contentType: req.headers['content-type']
+  });
+
   const { name, email, rollNumber, class: studentClass, semester, year, password } = req.body;
 
-  // Validation
-  if (!name || !email || !rollNumber || !studentClass || !semester || !year || !password) {
+  // Comprehensive validation
+  const errors = [];
+
+  if (!name || name.trim().length < 2) {
+    errors.push({ field: 'name', message: 'Name must be at least 2 characters long' });
+  }
+
+  if (!email || email.trim().length === 0) {
+    errors.push({ field: 'email', message: 'Email is required' });
+  } else {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      errors.push({ field: 'email', message: 'Please enter a valid email address' });
+    }
+  }
+
+  if (!rollNumber || rollNumber.trim().length === 0) {
+    errors.push({ field: 'rollNumber', message: 'Roll number is required' });
+  }
+
+  if (!studentClass || studentClass.trim().length === 0) {
+    errors.push({ field: 'class', message: 'Class is required' });
+  }
+
+  if (!semester || semester.trim().length === 0) {
+    errors.push({ field: 'semester', message: 'Semester is required' });
+  }
+
+  if (!year || year.trim().length === 0) {
+    errors.push({ field: 'year', message: 'Year is required' });
+  }
+
+  if (!password || password.length < 6) {
+    errors.push({ field: 'password', message: 'Password must be at least 6 characters long' });
+  }
+
+  if (errors.length > 0) {
     return res.status(400).json({
       success: false,
-      message: "All fields are required"
+      message: "Validation failed",
+      errors: errors
     });
   }
 
-  const existingUser = await User.findOne({ 
-    $or: [{ email: email.toLowerCase() }, { rollNumber: rollNumber.toUpperCase() }] 
-  });
+  try {
+    // Check for existing user
+    const existingUser = await User.findOne({ 
+      $or: [
+        { email: email.trim().toLowerCase() }, 
+        { rollNumber: rollNumber.trim().toUpperCase() }
+      ] 
+    });
 
-  if (existingUser) {
-    return res.status(400).json({
+    if (existingUser) {
+      const conflictField = existingUser.email === email.trim().toLowerCase() ? 'email' : 'rollNumber';
+      return res.status(400).json({
+        success: false,
+        message: `Student already exists with this ${conflictField}`,
+        field: conflictField
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
+    
+    // Create new user
+    const newUser = new User({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      rollNumber: rollNumber.trim().toUpperCase(),
+      class: studentClass.trim(),
+      year: year.trim(),
+      semester: semester.trim(),
+      password: hashedPassword
+    });
+
+    await newUser.save();
+
+    const userResponse = {
+      id: newUser._id,
+      name: newUser.name,
+      email: newUser.email,
+      rollNumber: newUser.rollNumber,
+      class: newUser.class,
+      year: newUser.year,
+      semester: newUser.semester
+    };
+
+    console.log('User registered successfully:', newUser.email);
+
+    res.status(201).json({
+      success: true,
+      message: "Registration successful",
+      user: userResponse
+    });
+
+  } catch (error) {
+    console.error('Registration error:', error);
+    
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        success: false,
+        message: `${field === 'email' ? 'Email' : 'Roll number'} already exists`,
+        field: field
+      });
+    }
+
+    res.status(500).json({
       success: false,
-      message: "Student already exists with this email or roll number"
+      message: "Registration failed",
+      error: error.message
     });
   }
-
-  const hashedPassword = await bcrypt.hash(password, 12);
-  
-  const newUser = new User({
-    name: name.trim(),
-    email: email.toLowerCase(),
-    rollNumber: rollNumber.toUpperCase(),
-    class: studentClass,
-    year,
-    semester,
-    password: hashedPassword
-  });
-
-  await newUser.save();
-
-  const userResponse = {
-    id: newUser._id,
-    name: newUser.name,
-    email: newUser.email,
-    rollNumber: newUser.rollNumber,
-    class: newUser.class,
-    year: newUser.year,
-    semester: newUser.semester
-  };
-
-  res.status(201).json({
-    success: true,
-    message: "User registered successfully",
-    user: userResponse
-  });
 }));
 
+
+// Enhanced login route with detailed validation and debugging
 app.post('/api/auth/login', asyncHandler(async (req, res) => {
+  // Log incoming request for debugging
+  console.log('Login request received:', {
+    body: req.body,
+    headers: req.headers,
+    contentType: req.headers['content-type']
+  });
+
   const { email, password } = req.body;
 
-  if (!email || !password) {
+  // Enhanced validation with specific error messages
+  if (!req.body) {
+    console.log('No request body found');
     return res.status(400).json({ 
       success: false,
-      message: "Email and password are required" 
+      message: "Request body is missing",
+      debug: "No data received in request body"
     });
   }
 
-  const user = await User.findOne({ email: email.toLowerCase() });
-  if (!user || !await bcrypt.compare(password, user.password)) {
+  if (!email) {
+    console.log('Email missing from request:', req.body);
     return res.status(400).json({ 
       success: false,
-      message: "Invalid email or password" 
+      message: "Email is required",
+      field: "email",
+      received: { email: email, hasPassword: !!password }
     });
   }
 
-  const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
+  if (!password) {
+    console.log('Password missing from request:', req.body);
+    return res.status(400).json({ 
+      success: false,
+      message: "Password is required", 
+      field: "password",
+      received: { hasEmail: !!email, password: password }
+    });
+  }
+
+  // Trim and validate email format
+  const trimmedEmail = email.trim();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   
-  const userResponse = {
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    rollNumber: user.rollNumber,
-    class: user.class,
-    year: user.year,
-    semester: user.semester
-  };
+  if (!emailRegex.test(trimmedEmail)) {
+    return res.status(400).json({ 
+      success: false,
+      message: "Please enter a valid email address",
+      field: "email"
+    });
+  }
 
-  res.json({
-    success: true,
-    message: "Login successful",
-    token,
-    user: userResponse
-  });
+  if (password.length < 6) {
+    return res.status(400).json({ 
+      success: false,
+      message: "Password must be at least 6 characters long",
+      field: "password"
+    });
+  }
+
+  try {
+    // Find user by email (case insensitive)
+    const user = await User.findOne({ email: trimmedEmail.toLowerCase() });
+    
+    if (!user) {
+      console.log('User not found for email:', trimmedEmail);
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid email or password",
+        debug: "User not found"
+      });
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    
+    if (!isPasswordValid) {
+      console.log('Invalid password for user:', trimmedEmail);
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid email or password",
+        debug: "Password mismatch"
+      });
+    }
+
+    // Generate JWT token
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET not configured');
+      return res.status(500).json({
+        success: false,
+        message: "Server configuration error"
+      });
+    }
+
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
+    
+    const userResponse = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      rollNumber: user.rollNumber,
+      class: user.class,
+      year: user.year,
+      semester: user.semester
+    };
+
+    console.log('Login successful for user:', trimmedEmail);
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: userResponse
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred during login",
+      error: error.message
+    });
+  }
 }));
+
 
 // Paper routes with enhanced error handling
 app.get('/api/papers/filters', asyncHandler(async (req, res) => {
