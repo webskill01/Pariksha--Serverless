@@ -1,70 +1,72 @@
-// Frontend/src/services/authService.js - Fixed for Roll Number + Password
+// Frontend/src/services/authService.js - Fixed error handling
 import api from './api';
 
 export const authService = {
-  // Fixed login for Roll Number + Password
   login: async (credentials) => {
     try {
-      console.log('Attempting login with:', {
+      console.log('🚀 Attempting login with:', {
         rollNumber: credentials.rollNumber,
         hasPassword: !!credentials.password,
-        passwordLength: credentials.password?.length
+        credentialsKeys: Object.keys(credentials)
       });
 
-      // Validate frontend data before sending
+      // Validate before sending
       if (!credentials.rollNumber || !credentials.password) {
         throw new Error('Roll number and password are required');
       }
 
-      if (credentials.password.length < 6) {
-        throw new Error('Password must be at least 6 characters long');
-      }
-
       const response = await api.post('/auth/login', {
-        rollNumber: credentials.rollNumber.trim().toUpperCase(),
+        rollNumber: credentials.rollNumber.trim(),
         password: credentials.password
       });
 
-      console.log('Login response:', response.data);
+      console.log('📡 Login response received:', {
+        status: response.status,
+        success: response.data?.success,
+        hasToken: !!response.data?.token,
+        hasUser: !!response.data?.user
+      });
 
-      if (response.data && response.data.success) {
+      // Check for successful response structure
+      if (response.data && response.data.success === true) {
         const { token, user } = response.data;
         
         if (token && user) {
           localStorage.setItem('token', token);
           localStorage.setItem('user', JSON.stringify(user));
           window.dispatchEvent(new Event('storage'));
+          console.log('✅ Login successful, user stored');
           return response.data;
         } else {
-          throw new Error('Invalid response format from server');
+          console.error('❌ Missing token or user in response:', response.data);
+          throw new Error('Login response missing required data');
         }
       } else {
+        console.error('❌ Login failed:', response.data);
         throw new Error(response.data?.message || 'Login failed');
       }
     } catch (error) {
-      console.error('Login error details:', error);
+      console.error('❌ Login error:', error);
       
-      if (error.response?.data) {
+      // Handle axios error responses
+      if (error.response && error.response.data) {
         throw error.response.data;
-      } else if (error.message) {
+      } 
+      // Handle custom errors
+      else if (error.message) {
         throw { success: false, message: error.message };
-      } else {
+      } 
+      // Handle unknown errors
+      else {
         throw { success: false, message: 'Login failed. Please try again.' };
       }
     }
   },
 
-  // Register remains the same as it uses all fields
+  // ... rest of your methods remain the same
   register: async (userData) => {
     try {
-      console.log('Attempting registration with:', {
-        ...userData,
-        password: '[HIDDEN]'
-      });
-
       const response = await api.post('/auth/register', userData);
-      console.log('Registration response:', response.data);
-      
       return response.data;
     } catch (error) {
       console.error('Registration error:', error);
@@ -89,11 +91,6 @@ export const authService = {
     }
   },
 
-  getToken: () => {
-    return localStorage.getItem('token');
-  },
-
-  isAuthenticated: () => {
-    return !!localStorage.getItem('token');
-  }
+  getToken: () => localStorage.getItem('token'),
+  isAuthenticated: () => !!localStorage.getItem('token')
 };

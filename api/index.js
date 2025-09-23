@@ -37,7 +37,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// CORS Configuration with enhanced options
+// CORS Configuration - FIRST
 app.use(cors({
   origin: [
     'http://localhost:3000',
@@ -46,42 +46,67 @@ app.use(cors({
     process.env.FRONTEND_URL
   ].filter(Boolean),
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   credentials: true,
   preflightContinue: false,
   optionsSuccessStatus: 204
 }));
+// RAW BODY PARSING - CRITICAL FIX
+app.use(express.raw({ type: 'application/json', limit: '50mb' }));
+app.use((req, res, next) => {
+  if (req.body && req.body.length > 0) {
+    try {
+      const bodyStr = req.body.toString('utf8');
+      req.body = JSON.parse(bodyStr);
+    } catch (e) {
+      console.error('JSON parsing error:', e);
+    }
+  }
+  next();
+});
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Enhanced Database connection for serverless with better caching
+// Request logging middleware
+app.use((req, res, next) => {
+  if (req.url.includes('/auth/')) {
+    console.log('Auth request:', {
+      method: req.method,
+      url: req.url,
+      contentType: req.headers['content-type'],
+      bodyType: typeof req.body,
+      bodyKeys: typeof req.body === 'object' ? Object.keys(req.body || {}) : 'not-object',
+      bodyLength: req.body ? JSON.stringify(req.body).length : 0,
+      rawBody: req.body
+    });
+  }
+  next();
+});
+
+// Enhanced Database connection for serverless
 let cachedDb = null;
 let connectionPromise = null;
 
 const connectDB = async () => {
-  // Return cached connection if available and healthy
   if (cachedDb && mongoose.connection.readyState === 1) {
     return cachedDb;
   }
 
-  // Return existing connection promise if connection is in progress
   if (connectionPromise) {
     return connectionPromise;
   }
 
-  // Validate environment variables
   if (!process.env.MONGO_URI) {
     throw new Error('MONGO_URI environment variable is not set');
   }
 
-  console.log('Establishing new MongoDB connection...');
+  console.log('Establishing MongoDB connection...');
 
-  // Create new connection promise with enhanced options
   connectionPromise = mongoose.connect(process.env.MONGO_URI, {
     bufferCommands: false,
     maxPoolSize: 10,
-    serverSelectionTimeoutMS: 15000, // Increased timeout
+    serverSelectionTimeoutMS: 15000,
     socketTimeoutMS: 45000,
     connectTimeoutMS: 15000,
     maxIdleTimeMS: 30000,
@@ -91,17 +116,10 @@ const connectDB = async () => {
 
   try {
     cachedDb = await connectionPromise;
-    console.log('✅ MongoDB Atlas connected successfully');
+    console.log('✅ MongoDB connected successfully');
     
-    // Handle connection events
     mongoose.connection.on('error', (err) => {
-      console.error('❌ MongoDB connection error:', err);
-      cachedDb = null;
-      connectionPromise = null;
-    });
-
-    mongoose.connection.on('disconnected', () => {
-      console.log('🔌 MongoDB disconnected');
+      console.error('❌ MongoDB error:', err);
       cachedDb = null;
       connectionPromise = null;
     });
@@ -454,66 +472,44 @@ app.get('/api/recent', asyncHandler(async (req, res) => {
 }));
 
 // Auth routes
-// Enhanced register route with comprehensive validation
+// REGISTER ROUTE
 app.post('/api/auth/register', asyncHandler(async (req, res) => {
-  console.log('Register request received:', {
-    body: req.body,
-    contentType: req.headers['content-type']
-  });
+  console.log('=== REGISTER REQUEST ===');
+  console.log('Body:', req.body);
 
-  const { name, email, rollNumber, class: studentClass, semester, year, password } = req.body;
+  const { name, email, rollNumber, class: studentClass, semester, year, password } = req.body || {};
 
-  // Comprehensive validation
-  const errors = [];
-
-  if (!name || name.trim().length < 2) {
-    errors.push({ field: 'name', message: 'Name must be at least 2 characters long' });
-  }
-
-  if (!email || email.trim().length === 0) {
-    errors.push({ field: 'email', message: 'Email is required' });
-  } else {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      errors.push({ field: 'email', message: 'Please enter a valid email address' });
-    }
-  }
-
-  if (!rollNumber || rollNumber.trim().length === 0) {
-    errors.push({ field: 'rollNumber', message: 'Roll number is required' });
-  }
-
-  if (!studentClass || studentClass.trim().length === 0) {
-    errors.push({ field: 'class', message: 'Class is required' });
-  }
-
-  if (!semester || semester.trim().length === 0) {
-    errors.push({ field: 'semester', message: 'Semester is required' });
-  }
-
-  if (!year || year.trim().length === 0) {
-    errors.push({ field: 'year', message: 'Year is required' });
-  }
-
-  if (!password || password.length < 6) {
-    errors.push({ field: 'password', message: 'Password must be at least 6 characters long' });
-  }
-
-  if (errors.length > 0) {
+  // Validation
+  if (!name || !email || !rollNumber || !studentClass || !semester || !year || !password) {
     return res.status(400).json({
       success: false,
-      message: "Validation failed",
-      errors: errors
+      message: "All fields are required",
+      missing: {
+        name: !name,
+        email: !email,
+        rollNumber: !rollNumber,
+        class: !studentClass,
+        semester: !semester,
+        year: !year,
+        password: !password
+      }
+    });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: "Password must be at least 6 characters long"
     });
   }
 
   try {
     // Check for existing user
-    const existingUser = await User.findOne({ 
+    const existingUser = await User.findOne({
       $or: [
-        { email: email.trim().toLowerCase() }, 
+        { email: email.trim().toLowerCase() },
         { rollNumber: rollNumber.trim().toUpperCase() }
-      ] 
+      ]
     });
 
     if (existingUser) {
@@ -525,10 +521,9 @@ app.post('/api/auth/register', asyncHandler(async (req, res) => {
       });
     }
 
-    // Hash password
+    // Create new user
     const hashedPassword = await bcrypt.hash(password, 12);
     
-    // Create new user
     const newUser = new User({
       name: name.trim(),
       email: email.trim().toLowerCase(),
@@ -551,7 +546,7 @@ app.post('/api/auth/register', asyncHandler(async (req, res) => {
       semester: newUser.semester
     };
 
-    console.log('User registered successfully:', newUser.email);
+    console.log('✅ Registration successful:', newUser.rollNumber);
 
     res.status(201).json({
       success: true,
@@ -560,7 +555,7 @@ app.post('/api/auth/register', asyncHandler(async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('❌ Registration error:', error);
     
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
@@ -580,55 +575,57 @@ app.post('/api/auth/register', asyncHandler(async (req, res) => {
 }));
 
 
-// Fixed login route for Roll Number + Password authentication
+// FIXED LOGIN ROUTE
 app.post('/api/auth/login', asyncHandler(async (req, res) => {
-  // Log incoming request for debugging
-  console.log('Login request received:', {
-    body: req.body,
-    headers: req.headers,
-    contentType: req.headers['content-type']
-  });
+  console.log('=== LOGIN REQUEST ===');
+  console.log('Headers:', req.headers);
+  console.log('Body type:', typeof req.body);
+  console.log('Body content:', req.body);
+  console.log('Body keys:', Object.keys(req.body || {}));
 
-  const { rollNumber, password, email } = req.body;
+  // Handle both rollNumber and email login
+  const { rollNumber, email, password } = req.body || {};
 
-  // Enhanced validation with specific error messages
-  if (!req.body || Object.keys(req.body).length === 0) {
-    console.log('No request body found');
-    return res.status(400).json({ 
+  // Check if request body exists and has data
+  if (!req.body || (typeof req.body === 'object' && Object.keys(req.body).length === 0)) {
+    console.log('❌ Empty request body detected');
+    return res.status(400).json({
       success: false,
-      message: "Request body is missing",
-      debug: "No data received in request body"
+      message: "Request body is missing or empty",
+      debug: {
+        bodyType: typeof req.body,
+        bodyKeys: Object.keys(req.body || {}),
+        contentType: req.headers['content-type']
+      }
     });
   }
 
-  // Support both rollNumber and email login (rollNumber is primary)
+  // Determine login field (rollNumber has priority)
   const loginField = rollNumber || email;
+  const loginType = rollNumber ? 'rollNumber' : 'email';
 
   if (!loginField) {
-    console.log('Roll number/email missing from request:', req.body);
-    return res.status(400).json({ 
+    console.log('❌ No login field provided');
+    return res.status(400).json({
       success: false,
-      message: "Roll number is required",
+      message: "Roll number or email is required",
       field: "rollNumber",
-      received: { rollNumber: rollNumber, email: email, hasPassword: !!password }
+      received: { rollNumber, email, hasPassword: !!password }
     });
   }
 
   if (!password) {
-    console.log('Password missing from request:', req.body);
-    return res.status(400).json({ 
+    console.log('❌ No password provided');
+    return res.status(400).json({
       success: false,
-      message: "Password is required", 
+      message: "Password is required",
       field: "password",
-      received: { loginField: loginField, password: password ? '[PROVIDED]' : '[MISSING]' }
+      received: { loginField: loginField, hasPassword: false }
     });
   }
 
-  // Validate roll number format (basic validation)
-  const trimmedLoginField = loginField.trim().toUpperCase();
-  
   if (password.length < 6) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
       message: "Password must be at least 6 characters long",
       field: "password"
@@ -636,49 +633,42 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
   }
 
   try {
-    // Find user by rollNumber (primary) or email (fallback)
+    // Find user by rollNumber or email
     let user;
+    const searchField = loginField.trim();
     
-    if (rollNumber) {
-      // Login with roll number
-      user = await User.findOne({ rollNumber: trimmedLoginField });
-      console.log('Searching for user with roll number:', trimmedLoginField);
+    if (loginType === 'rollNumber') {
+      user = await User.findOne({ rollNumber: searchField.toUpperCase() });
+      console.log('🔍 Searching by rollNumber:', searchField.toUpperCase());
     } else {
-      // Login with email (fallback)
-      user = await User.findOne({ email: trimmedLoginField.toLowerCase() });
-      console.log('Searching for user with email:', trimmedLoginField.toLowerCase());
+      user = await User.findOne({ email: searchField.toLowerCase() });
+      console.log('🔍 Searching by email:', searchField.toLowerCase());
     }
-    
+
     if (!user) {
-      console.log('User not found for:', trimmedLoginField);
-      return res.status(400).json({ 
+      console.log('❌ User not found');
+      return res.status(400).json({
         success: false,
-        message: rollNumber ? "Invalid roll number or password" : "Invalid email or password",
+        message: `Invalid ${loginType} or password`,
         debug: "User not found"
       });
     }
+
+    console.log('✅ User found:', user.rollNumber);
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     
     if (!isPasswordValid) {
-      console.log('Invalid password for user:', trimmedLoginField);
-      return res.status(400).json({ 
+      console.log('❌ Invalid password');
+      return res.status(400).json({
         success: false,
-        message: rollNumber ? "Invalid roll number or password" : "Invalid email or password",
+        message: `Invalid ${loginType} or password`,
         debug: "Password mismatch"
       });
     }
 
     // Generate JWT token
-    if (!process.env.JWT_SECRET) {
-      console.error('JWT_SECRET not configured');
-      return res.status(500).json({
-        success: false,
-        message: "Server configuration error"
-      });
-    }
-
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
     
     const userResponse = {
@@ -691,7 +681,7 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
       semester: user.semester
     };
 
-    console.log('Login successful for user:', user.rollNumber);
+    console.log('✅ Login successful:', user.rollNumber);
 
     res.json({
       success: true,
@@ -701,10 +691,10 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('❌ Login error:', error);
     res.status(500).json({
       success: false,
-      message: "An error occurred during login",
+      message: "Login failed due to server error",
       error: error.message
     });
   }

@@ -55,45 +55,91 @@ function Login() {
     }
   }, [watchedFields.password, errors.password, clearErrors]);
 
-  // ✅ FIXED: Form submission handler with proper error handling and delay
+  // ✅ FIXED: Form submission handler with correct response structure
   const onSubmit = async (data) => {
     try {
+      console.log('🚀 Submitting login form with:', {
+        rollNumber: data.rollNumber,
+        hasPassword: !!data.password
+      });
+
       const response = await authService.login(data);
       
-      if (response.success) {
-        const user = response.data.user;
-        const adminEmails = ["nitinemailss@gmail.com"]; // Same as your backend middleware
+      console.log('📡 AuthService response:', {
+        success: response?.success,
+        hasUser: !!response?.user,
+        userEmail: response?.user?.email
+      });
+
+      // ✅ FIXED: Correct response structure handling
+      if (response && response.success) {
+        const user = response.user; // ✅ FIXED: response.user, not response.data.user
+        const adminEmails = ["nitinemailss@gmail.com"];
         
-        toast.success('Login successful!');
+        console.log('✅ Login successful for user:', user?.rollNumber);
+        toast.success(`Welcome back, ${user.name}!`);
         
         // ✅ CRITICAL: Small delay ensures localStorage is fully updated before redirect
         setTimeout(() => {
-          if (adminEmails.includes(user.email)) {
-            navigate('/admin/dashboard', { replace: true }); // Admin users go to admin dashboard
+          if (user && adminEmails.includes(user.email)) {
+            console.log('🔑 Redirecting admin to admin dashboard');
+            navigate('/admin/dashboard', { replace: true });
           } else {
-            navigate('/dashboard', { replace: true }); // Regular users go to user dashboard
+            console.log('👤 Redirecting user to dashboard');
+            navigate('/dashboard', { replace: true });
           }
-        }, 100); // 100ms delay ensures state synchronization
+        }, 150); // Slightly increased delay for better reliability
+      } else {
+        throw new Error(response?.message || 'Login failed - invalid response format');
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ Login form error:', error);
       
-      // ✅ IMPROVED: Better error handling
-      if (error.message?.includes("roll number")) {
+      // ✅ IMPROVED: Better error handling with field-specific validation
+      const errorMessage = error?.message || 'Login failed';
+      
+      if (errorMessage.toLowerCase().includes("roll number") || errorMessage.toLowerCase().includes("rollnumber")) {
         setError("rollNumber", {
           type: "server",
-          message: error.message,
+          message: errorMessage,
         });
-      } else if (error.message?.includes("password")) {
+      } else if (errorMessage.toLowerCase().includes("password")) {
         setError("password", {
-          type: "server",
-          message: error.message,
+          type: "server", 
+          message: errorMessage,
         });
       } else {
-        toast.error(error.message || "Login failed. Please try again.");
+        // Show general error as toast
+        toast.error(errorMessage);
       }
     }
   };
+
+  // ✅ Check if user is already logged in on component mount
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    
+    if (token && user) {
+      try {
+        const parsedUser = JSON.parse(user);
+        const adminEmails = ["nitinemailss@gmail.com"];
+        
+        console.log('🔄 User already logged in, redirecting...');
+        
+        if (adminEmails.includes(parsedUser.email)) {
+          navigate('/admin/dashboard', { replace: true });
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
+      } catch (error) {
+        console.error('Error parsing stored user data:', error);
+        // Clear invalid data
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+    }
+  }, [navigate]);
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 gradient-bg overflow-hidden">
@@ -136,6 +182,7 @@ function Login() {
                     `}
                     {...register("rollNumber")}
                     disabled={isSubmitting}
+                    autoComplete="username"
                   />
                   {/* Focus glow effect */}
                   <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 rounded-xl opacity-0 focus-within:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
@@ -174,6 +221,7 @@ function Login() {
                     `}
                     {...register("password")}
                     disabled={isSubmitting}
+                    autoComplete="current-password"
                   />
 
                   {/* Password toggle button */}
@@ -182,6 +230,7 @@ function Login() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-cyan-400 transition-all duration-300 p-1 rounded-full hover:bg-slate-700/50"
                     disabled={isSubmitting}
+                    tabIndex="-1"
                   >
                     {showPassword ? (
                       <VisibilityOff fontSize="small" />
@@ -220,6 +269,7 @@ function Login() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center space-x-3 relative z-10 transition-transform duration-300 group-hover:scale-105">
+                    <LoginIcon fontSize="small" />
                     <span className="font-medium text-sm sm:text-base">Log In</span>
                     <ArrowForward fontSize="small" />
                   </div>
