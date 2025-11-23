@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import DismissibleAlert from '../../utils/Alert';
 import { 
   Search, 
   LibraryBooks,
@@ -74,8 +73,6 @@ function HeroSection({ stats }) {
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-purple-500/10 to-pink-500/10 rounded-full blur-3xl"></div>
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-green-500/5 to-blue-500/5 rounded-full blur-3xl"></div>
       </div>
-
-        <DismissibleAlert message={"The DataBase Might Take 20s-30s To Load When You Open Site For the First Time"} type='info' />
       <div className="container-custom relative z-10 py-12 sm:py-16 lg:py-20">
         <div className="text-center max-w-4xl mx-auto">
           

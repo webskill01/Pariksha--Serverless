@@ -1,4 +1,4 @@
-// src/pages/papers/PaperDetail.jsx - With PDF Preview
+// src/pages/papers/PaperDetail.jsx - Enhanced PDF Preview
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -10,7 +10,8 @@ import {
   Tag as TagIcon,
   ArrowForward,
   Visibility,
-  Close
+  Close,
+  OpenInNew
 } from '@mui/icons-material'
 
 import { paperService } from '../../services/paperService'
@@ -23,7 +24,8 @@ function PaperDetail() {
   const [paper, setPaper] = useState(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
-  const [showPreview, setShowPreview] = useState(false) // Preview state
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewError, setPreviewError] = useState(false)
 
   const { id: paperId } = useParams()
   const navigate = useNavigate()
@@ -74,7 +76,6 @@ function PaperDetail() {
       if (response.data?.success) {
         const { fileUrl, downloadCount } = response.data.data
         
-        // Download the file with clean filename
         const cleanFilename = getCleanFilename(paper.title)
         const link = document.createElement('a')
         link.href = fileUrl
@@ -83,7 +84,6 @@ function PaperDetail() {
         link.click()
         document.body.removeChild(link)
         
-        // Update local state with returned count
         setPaper(prev => prev ? {
           ...prev,
           downloadCount: downloadCount
@@ -102,6 +102,7 @@ function PaperDetail() {
   const handlePreview = () => {
     if (paper?.fileUrl) {
       setShowPreview(true)
+      setPreviewError(false)
     } else {
       toast.error('Preview not available')
     }
@@ -130,7 +131,6 @@ function PaperDetail() {
     fetchPaperDetails()
   }, [paperId])
 
-  // Loading state
   if (loading) {
     return (
       <div className="container-custom py-8">
@@ -144,7 +144,6 @@ function PaperDetail() {
     )
   }
 
-  // Error state
   if (!paper) {
     return (
       <div className="container-custom py-8">
@@ -168,15 +167,21 @@ function PaperDetail() {
     { label: paper.title || 'Paper' }
   ]
 
+  // Generate preview URL with fallback options
+  const getPreviewUrl = () => {
+    if (!paper?.fileUrl) return null;
+    
+    // Try direct URL first with PDF parameters
+    return `${paper.fileUrl}#view=FitH&toolbar=1&navpanes=0&scrollbar=1`;
+  }
+
   return (
     <div className="container-custom px-3 py-4 sm:px-6 sm:py-8">
       
-      {/* Breadcrumb */}
       <div className="hidden sm:block mb-4">
         <Breadcrumb items={breadcrumbItems} />
       </div>
 
-      {/* Back Button */}
       <Link 
         to="/papers"
         className="inline-flex items-center space-x-2 text-slate-400 hover:text-cyan-400 mb-4 transition-colors duration-200 text-sm"
@@ -185,11 +190,9 @@ function PaperDetail() {
         <span>Back to Browse</span>
       </Link>
 
-      {/* Main Content */}
       <div className="card glass-strong">
         <div className="card-body p-4 sm:p-6">
           
-          {/* Header Section */}
           <div className="flex items-start space-x-3 mb-4 sm:mb-6">
             <div className="p-2.5 sm:p-3 rounded-xl bg-red-500/20 flex-shrink-0">
               <PictureAsPdf className="text-red-400 text-xl sm:text-2xl" />
@@ -206,7 +209,6 @@ function PaperDetail() {
             </div>
           </div>
 
-          {/* Paper Details */}
           <div className="bg-slate-900/40 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
             <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:gap-x-4 sm:gap-y-3 text-xs sm:text-sm">
               <div className="text-slate-500 font-medium">Subject</div>
@@ -234,7 +236,6 @@ function PaperDetail() {
             </div>
           </div>
 
-          {/* Tags Section */}
           {paper.tags && paper.tags.length > 0 && (
             <div className="mb-4 sm:mb-6">
               <div className="flex items-center space-x-2 mb-2">
@@ -254,9 +255,7 @@ function PaperDetail() {
             </div>
           )}
 
-          {/* Action Buttons - 3 Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Preview Button */}
             <button
               onClick={handlePreview}
               className="btn-md btn-secondary flex items-center justify-center space-x-2"
@@ -265,7 +264,6 @@ function PaperDetail() {
               <span>Preview PDF</span>
             </button>
 
-            {/* Download Button */}
             <button
               onClick={handleDownload}
               disabled={downloading}
@@ -284,7 +282,6 @@ function PaperDetail() {
               )}
             </button>
             
-            {/* Share Button */}
             <button
               onClick={handleShare}
               className="btn-md btn-secondary flex items-center justify-center space-x-2"
@@ -296,35 +293,75 @@ function PaperDetail() {
         </div>
       </div>
 
-      {/* PDF Preview Modal */}
+      {/* Enhanced PDF Preview Modal */}
       {showPreview && paper?.fileUrl && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-4">
           <div className="bg-slate-900 rounded-lg w-full h-full max-w-7xl max-h-[95vh] flex flex-col shadow-2xl">
-            {/* Modal Header */}
             <div className="flex justify-between items-center p-3 sm:p-4 border-b border-slate-700">
               <h3 className="text-sm sm:text-lg font-semibold text-white truncate flex-1 pr-4">
                 {paper.title}
               </h3>
-              <button
-                onClick={() => setShowPreview(false)}
-                className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-800"
-              >
-                <Close />
-              </button>
+              <div className="flex items-center space-x-2">
+                <a
+                  href={paper.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-3 py-1 rounded-lg hover:bg-slate-800 transition-colors"
+                >
+                  <OpenInNew fontSize="small" />
+                  <span className="hidden sm:inline">Open in New Tab</span>
+                </a>
+                <button
+                  onClick={() => setShowPreview(false)}
+                  className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-800"
+                >
+                  <Close />
+                </button>
+              </div>
             </div>
             
-            {/* PDF Preview Iframe */}
-            <iframe
-              src={paper.fileUrl}
-              className="flex-1 w-full border-0 rounded-b-lg"
-              title="PDF Preview"
-              sandbox="allow-same-origin allow-scripts"
-            />
+            {!previewError ? (
+              <iframe
+                src={getPreviewUrl()}
+                className="flex-1 w-full border-0 rounded-b-lg bg-white"
+                title="PDF Preview"
+                allow="fullscreen"
+                onError={() => setPreviewError(true)}
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center p-8">
+                  <PictureAsPdf className="text-slate-600 text-6xl mb-4 mx-auto" />
+                  <h3 className="text-xl font-bold text-white mb-2">Preview Not Available</h3>
+                  <p className="text-slate-400 mb-4">
+                    Unable to load preview. You can download the PDF instead.
+                  </p>
+                  <div className="flex space-x-3 justify-center">
+                    <button
+                      onClick={handleDownload}
+                      className="btn-md btn-primary"
+                    >
+                      <Download fontSize="small" />
+                      <span>Download PDF</span>
+                    </button>
+                    <a
+                      href={paper.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-md btn-secondary"
+                    >
+                      <OpenInNew fontSize="small" />
+                      <span>Open External</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Quick Stats Card */}
+      {/* Rest of your component remains the same */}
       <div className="mt-4 sm:mt-6">
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">
@@ -347,7 +384,6 @@ function PaperDetail() {
         </div>
       </div>
 
-      {/* Quick Navigation Links */}
       <div className="mt-4 sm:mt-6">
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">
