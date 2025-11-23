@@ -1,14 +1,13 @@
-// Frontend/src/services/userService.js - Dedicated user service
-// Frontend/src/services/userService.js - Dedicated user service
+// src/services/userService.js - Fixed endpoints
 import api from './api';
 import { authService } from './authService';
 
 export const userService = {
-  // Get user dashboard data with filtering
+  // Get user dashboard data with filtering - FIXED ENDPOINT
   getDashboard: async (statusFilter = '') => {
     try {
       const params = statusFilter ? { status: statusFilter } : {};
-      const response = await api.get('/users/me/dashboard', { params });
+      const response = await api.get('/user/dashboard', { params }); // Fixed: removed 's' and 'me'
       
       console.log('Dashboard API response:', response.data);
       return response.data;
@@ -25,10 +24,10 @@ export const userService = {
     }
   },
 
-  // Delete user's own paper
+  // Delete user's own paper - FIXED ENDPOINT
   deleteMyPaper: async (paperId) => {
     try {
-      const response = await api.delete(`/users/me/paper/${paperId}`);
+      const response = await api.delete(`/user/paper/${paperId}`); // Fixed: removed 's' and 'me'
       return response.data;
     } catch (error) {
       console.error('Delete paper error:', error);
@@ -39,7 +38,7 @@ export const userService = {
   // Update user profile (future feature)
   updateProfile: async (profileData) => {
     try {
-      const response = await api.put('/users/me/profile', profileData);
+      const response = await api.put('/user/profile', profileData); // Fixed for consistency
       return response.data;
     } catch (error) {
       throw error.response?.data || { success: false, message: 'Failed to update profile' };

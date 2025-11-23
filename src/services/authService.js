@@ -1,4 +1,4 @@
-// Frontend/src/services/authService.js - Complete Fixed Version
+// src/services/authService.js - Cleaned up version
 import api from './api';
 
 export const authService = {
@@ -40,18 +40,17 @@ export const authService = {
     }
   },
 
-  // Enhanced login with detailed logging
+  // Login with roll number and password
   login: async (credentials) => {
     try {
       console.log('Attempting login with:', {
-        email: credentials.email,
-        hasPassword: !!credentials.password,
-        passwordLength: credentials.password?.length
+        rollNumber: credentials.rollNumber,
+        hasPassword: !!credentials.password
       });
 
-      // Validate frontend data before sending
-      if (!credentials.email || !credentials.password) {
-        throw new Error('Email and password are required');
+      // Validate frontend data
+      if (!credentials.rollNumber || !credentials.password) {
+        throw new Error('Roll number and password are required');
       }
 
       if (credentials.password.length < 6) {
@@ -59,7 +58,7 @@ export const authService = {
       }
 
       const response = await api.post('/auth/login', {
-        email: credentials.email.trim(),
+        rollNumber: credentials.rollNumber.trim(),
         password: credentials.password
       });
 
@@ -92,7 +91,7 @@ export const authService = {
     }
   },
 
-  // Logout with storage event
+  // Logout
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -116,39 +115,19 @@ export const authService = {
     return localStorage.getItem('token');
   },
 
-  // Check if user is authenticated
+  // Check if authenticated
   isAuthenticated: () => {
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
     return !!(token && user);
   },
 
-  // Check if user is admin
+  // Check if admin
   isAdmin: () => {
     const user = authService.getCurrentUser();
     const adminEmails = ["nitinemailss@gmail.com"];
     return user && adminEmails.includes(user.email);
-  },
-
-  // Get user dashboard data - FIXED FUNCTION
-  getDashboard: async (statusFilter = '') => {
-    try {
-      const params = statusFilter ? { status: statusFilter } : {};
-      const response = await api.get('/users/me/dashboard', { params });
-      return response.data;
-    } catch (error) {
-      console.error('Dashboard fetch error:', error);
-      throw error.response?.data || { success: false, message: 'Failed to fetch dashboard data' };
-    }
-  },
-
-  // Delete user's own paper - FIXED ENDPOINT
-  deleteMyPaper: async (paperId) => {
-    try {
-      const response = await api.delete(`/users/me/paper/${paperId}`); // Fixed: singular 'paper'
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || { success: false, message: 'Failed to delete paper' };
-    }
   }
+
+  // Removed getDashboard and deleteMyPaper - use userService instead
 };

@@ -1,5 +1,4 @@
-// Frontend/src/pages/papers/PaperDetail.jsx - Mobile-Optimized Version
-
+// src/pages/papers/PaperDetail.jsx - With PDF Preview
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -9,96 +8,104 @@ import {
   ArrowBack,
   Share,
   Tag as TagIcon,
-  ArrowForward
+  ArrowForward,
+  Visibility,
+  Close
 } from '@mui/icons-material'
 
 import { paperService } from '../../services/paperService'
 import StatusBadge from '../../components/ui/StatusBadge'
 import Breadcrumb from '../../components/ui/Breadcrumb'
-import { getCleanFilename  } from '../../utils/downloadUtils'
+import { getCleanFilename } from '../../utils/downloadUtils'
 import api from '../../services/api'
 
 function PaperDetail() {
   const [paper, setPaper] = useState(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
+  const [showPreview, setShowPreview] = useState(false) // Preview state
 
   const { id: paperId } = useParams()
   const navigate = useNavigate()
 
-  // Enhanced fetch function with better debugging
   const fetchPaperDetails = async () => {
-  if (!paperId) {
-    navigate('/papers')
-    return
-  }
-
-  setLoading(true)
-  try {
-    const response = await paperService.getPaperById(paperId)
-    let paperData = null
-    
-    if (response?.data && response.data._id) {
-      // Paper data is directly under response.data
-      paperData = response.data
-    } else if (response?.data?.data && response.data.data._id) {
-      // Fallback: nested structure
-      paperData = response.data.data
-    } else if (response && response._id) {
-      // Direct response structure
-      paperData = response
-    }
-    if (!paperData || !paperData._id) {
-      throw new Error('Invalid paper data received from server')
-    }
-    
-    setPaper(paperData)
-  } catch (error) {
-    console.error('Failed to fetch paper details:', error)
-    toast.error('Failed to load paper details')
-    
-    if (error.response?.status === 404) {
+    if (!paperId) {
       navigate('/papers')
+      return
     }
-  } finally {
-    setLoading(false)
-  }
-}
-const handleDownload = async () => {
-  if (downloading) return
 
-  setDownloading(true)
-  try {
-    const response = await api.post(`/papers/${paper._id}/download`)
-    
-    if (response.data?.success) {
-      const { fileUrl, downloadCount } = response.data.data
+    setLoading(true)
+    try {
+      const response = await paperService.getPaperById(paperId)
+      let paperData = null
       
-      // 1. Download the file with clean filename
-      const cleanFilename = getCleanFilename(paper.title)
-      const link = document.createElement('a')
-      link.href = fileUrl
-      link.download = cleanFilename
-      // link.target = '_blank'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      if (response?.data && response.data._id) {
+        paperData = response.data
+      } else if (response?.data?.data && response.data.data._id) {
+        paperData = response.data.data
+      } else if (response && response._id) {
+        paperData = response
+      }
+
+      if (!paperData || !paperData._id) {
+        throw new Error('Invalid paper data received from server')
+      }
       
-      // 2. Update local state with returned count
-      setPaper(prev => prev ? {
-        ...prev,
-        downloadCount: downloadCount
-      } : null)
+      setPaper(paperData)
+    } catch (error) {
+      console.error('Failed to fetch paper details:', error)
+      toast.error('Failed to load paper details')
       
-      toast.success(`Downloading "${paper.title}"`)
+      if (error.response?.status === 404) {
+        navigate('/papers')
+      }
+    } finally {
+      setLoading(false)
     }
-  } catch (error) {
-    console.error('Download failed:', error)
-    toast.error('Download failed. Please try again.')
-  } finally {
-    setDownloading(false)
   }
-}
+
+  const handleDownload = async () => {
+    if (downloading) return
+
+    setDownloading(true)
+    try {
+      const response = await api.post(`/papers/${paper._id}/download`)
+      
+      if (response.data?.success) {
+        const { fileUrl, downloadCount } = response.data.data
+        
+        // Download the file with clean filename
+        const cleanFilename = getCleanFilename(paper.title)
+        const link = document.createElement('a')
+        link.href = fileUrl
+        link.download = cleanFilename
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        
+        // Update local state with returned count
+        setPaper(prev => prev ? {
+          ...prev,
+          downloadCount: downloadCount
+        } : null)
+        
+        toast.success(`Downloading "${paper.title}"`)
+      }
+    } catch (error) {
+      console.error('Download failed:', error)
+      toast.error('Download failed. Please try again.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const handlePreview = () => {
+    if (paper?.fileUrl) {
+      setShowPreview(true)
+    } else {
+      toast.error('Preview not available')
+    }
+  }
 
   const handleShare = async () => {
     const shareData = {
@@ -164,12 +171,12 @@ const handleDownload = async () => {
   return (
     <div className="container-custom px-3 py-4 sm:px-6 sm:py-8">
       
-      {/* Compact Breadcrumb - Hidden on very small screens */}
+      {/* Breadcrumb */}
       <div className="hidden sm:block mb-4">
         <Breadcrumb items={breadcrumbItems} />
       </div>
 
-      {/* Compact Back Button */}
+      {/* Back Button */}
       <Link 
         to="/papers"
         className="inline-flex items-center space-x-2 text-slate-400 hover:text-cyan-400 mb-4 transition-colors duration-200 text-sm"
@@ -178,11 +185,11 @@ const handleDownload = async () => {
         <span>Back to Browse</span>
       </Link>
 
-      {/* Main Content - Single Card Layout for Mobile */}
+      {/* Main Content */}
       <div className="card glass-strong">
         <div className="card-body p-4 sm:p-6">
           
-          {/* Header Section - Compact Layout */}
+          {/* Header Section */}
           <div className="flex items-start space-x-3 mb-4 sm:mb-6">
             <div className="p-2.5 sm:p-3 rounded-xl bg-red-500/20 flex-shrink-0">
               <PictureAsPdf className="text-red-400 text-xl sm:text-2xl" />
@@ -199,7 +206,7 @@ const handleDownload = async () => {
             </div>
           </div>
 
-          {/* Paper Details - Compact Grid */}
+          {/* Paper Details */}
           <div className="bg-slate-900/40 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
             <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:gap-x-4 sm:gap-y-3 text-xs sm:text-sm">
               <div className="text-slate-500 font-medium">Subject</div>
@@ -227,7 +234,7 @@ const handleDownload = async () => {
             </div>
           </div>
 
-          {/* Tags Section - Compact */}
+          {/* Tags Section */}
           {paper.tags && paper.tags.length > 0 && (
             <div className="mb-4 sm:mb-6">
               <div className="flex items-center space-x-2 mb-2">
@@ -247,12 +254,22 @@ const handleDownload = async () => {
             </div>
           )}
 
-          {/* Action Buttons - Mobile-First Layout */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 sm:gap-8">
+          {/* Action Buttons - 3 Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Preview Button */}
+            <button
+              onClick={handlePreview}
+              className="btn-md btn-secondary flex items-center justify-center space-x-2"
+            >
+              <Visibility fontSize="small" />
+              <span>Preview PDF</span>
+            </button>
+
+            {/* Download Button */}
             <button
               onClick={handleDownload}
               disabled={downloading}
-              className="btn-md btn-primary flex-1 flex items-center justify-center"
+              className="btn-md btn-primary flex items-center justify-center space-x-2"
             >
               {downloading ? (
                 <>
@@ -261,24 +278,53 @@ const handleDownload = async () => {
                 </>
               ) : (
                 <>
-                  <Download fontSize='small' />
+                  <Download fontSize="small" />
                   <span>Download PDF</span>
                 </>
               )}
             </button>
             
+            {/* Share Button */}
             <button
               onClick={handleShare}
               className="btn-md btn-secondary flex items-center justify-center space-x-2"
             >
               <Share fontSize="small" />
-              <span>Share Paper</span>
+              <span>Share</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Quick Stats Card - Mobile Optimized */}
+      {/* PDF Preview Modal */}
+      {showPreview && paper?.fileUrl && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-slate-900 rounded-lg w-full h-full max-w-7xl max-h-[95vh] flex flex-col shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-3 sm:p-4 border-b border-slate-700">
+              <h3 className="text-sm sm:text-lg font-semibold text-white truncate flex-1 pr-4">
+                {paper.title}
+              </h3>
+              <button
+                onClick={() => setShowPreview(false)}
+                className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-800"
+              >
+                <Close />
+              </button>
+            </div>
+            
+            {/* PDF Preview Iframe */}
+            <iframe
+              src={paper.fileUrl}
+              className="flex-1 w-full border-0 rounded-b-lg"
+              title="PDF Preview"
+              sandbox="allow-same-origin allow-scripts"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Quick Stats Card */}
       <div className="mt-4 sm:mt-6">
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">
@@ -301,7 +347,7 @@ const handleDownload = async () => {
         </div>
       </div>
 
-      {/* Quick Navigation Links - Mobile Optimized */}
+      {/* Quick Navigation Links */}
       <div className="mt-4 sm:mt-6">
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">
@@ -311,25 +357,25 @@ const handleDownload = async () => {
                 to={`/papers?subject=${encodeURIComponent(paper.subject || '')}`}
                 className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
               >
-               <span className='flex items-center'> More {paper.subject} Papers <ArrowForward fontSize='small'/></span>
+                <span className='flex items-center'>More {paper.subject} Papers <ArrowForward fontSize='small'/></span>
               </Link>
               <Link 
                 to={`/papers?class=${encodeURIComponent(paper.class || '')}`}
                 className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
               >
-                <span className='flex items-center'> More {paper.class} Papers <ArrowForward fontSize='small'/></span>
+                <span className='flex items-center'>More {paper.class} Papers <ArrowForward fontSize='small'/></span>
               </Link>
               <Link 
                 to={`/papers?examType=${paper.examType}`}
                 className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
               >
-               <span className='flex items-center'> More {paper.examType} Papers <ArrowForward fontSize='small'/></span>
+                <span className='flex items-center'>More {paper.examType} Papers <ArrowForward fontSize='small'/></span>
               </Link>
               <Link 
                 to="/papers"
                 className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
               >
-               <span className='flex items-center'> Browse All Papers <ArrowForward fontSize='small'/></span>
+                <span className='flex items-center'>Browse All Papers <ArrowForward fontSize='small'/></span>
               </Link>
             </div>
           </div>

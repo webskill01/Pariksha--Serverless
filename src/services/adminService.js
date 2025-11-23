@@ -1,4 +1,4 @@
-// Frontend/src/services/adminService.js - Complete admin functionality
+// src/services/adminService.js - Fixed endpoints
 import api from './api';
 import { toast } from 'react-toastify';
 
@@ -23,10 +23,10 @@ export const adminService = {
     }
   },
 
-  // Get pending papers only
+  // Get pending papers only - FIXED ENDPOINT
   getPendingPapers: async () => {
     try {
-      const response = await api.get('/admin/pending-papers');
+      const response = await api.get('/admin/pending'); // Fixed: removed '-papers'
       return response.data;
     } catch (error) {
       throw error.response?.data || { message: 'Failed to fetch pending papers' };
@@ -43,10 +43,10 @@ export const adminService = {
     }
   },
 
-  // Admin download paper (for review before approval)
+  // Admin download paper (for review before approval) - FIXED ENDPOINT
   downloadPaperForPreview: async (paperId) => {
     try {
-      const response = await api.post(`/admin/papers/${paperId}/download`);
+      const response = await api.post(`/admin/papers/${paperId}/preview`); // Fixed: preview.js handles POST
       
       if (response.data?.success && response.data?.data?.fileUrl) {
         const { fileUrl, fileName, paperStatus, adminDownload } = response.data.data;
@@ -100,7 +100,7 @@ export const adminService = {
   // Delete paper permanently
   deletePaper: async (paperId) => {
     try {
-      const response = await api.delete(`/admin/papers/${paperId}`);
+      const response = await api.delete(`/admin/papers/${paperId}`); // This calls index.js DELETE method
       return response.data;
     } catch (error) {
       throw error.response?.data || { message: 'Failed to delete paper' };
