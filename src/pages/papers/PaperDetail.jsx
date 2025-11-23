@@ -1,7 +1,10 @@
-// src/pages/papers/PaperDetail.jsx - Fixed PDF Preview
+// src/pages/papers/PaperDetail.jsx - With react-pdf Viewer
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
+import { Document, Page, pdfjs } from 'react-pdf'
+import 'react-pdf/dist/Page/AnnotationLayer.css'
+import 'react-pdf/dist/Page/TextLayer.css'
 import { 
   PictureAsPdf,
   Download,
@@ -11,7 +14,11 @@ import {
   ArrowForward,
   Visibility,
   Close,
-  OpenInNew
+  OpenInNew,
+  ZoomIn,
+  ZoomOut,
+  NavigateBefore,
+  NavigateNext
 } from '@mui/icons-material'
 
 import { paperService } from '../../services/paperService'
@@ -20,13 +27,19 @@ import Breadcrumb from '../../components/ui/Breadcrumb'
 import { getCleanFilename } from '../../utils/downloadUtils'
 import api from '../../services/api'
 
+// Configure PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
+
 function PaperDetail() {
   const [paper, setPaper] = useState(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
-  const [previewLoading, setPreviewLoading] = useState(false)
-  const [previewError, setPreviewError] = useState(false)
+  const [numPages, setNumPages] = useState(null)
+  const [pageNumber, setPageNumber] = useState(1)
+  const [scale, setScale] = useState(1.0)
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const [pdfError, setPdfError] = useState(false)
 
   const { id: paperId } = useParams()
   const navigate = useNavigate()
@@ -104,8 +117,10 @@ function PaperDetail() {
   const handlePreview = () => {
     if (paper?.fileUrl) {
       setShowPreview(true)
-      setPreviewLoading(true)
-      setPreviewError(false)
+      setPdfLoading(true)
+      setPdfError(false)
+      setPageNumber(1)
+      setScale(1.0)
     } else {
       toast.error('Preview not available')
     }
@@ -128,6 +143,35 @@ function PaperDetail() {
     } catch (error) {
       console.error('Share failed:', error)
     }
+  }
+
+  const onDocumentLoadSuccess = ({ numPages }) => {
+    setNumPages(numPages)
+    setPdfLoading(false)
+    setPdfError(false)
+  }
+
+  const onDocumentLoadError = (error) => {
+    console.error('PDF load error:', error)
+    setPdfError(true)
+    setPdfLoading(false)
+    toast.error('Failed to load PDF preview')
+  }
+
+  const goToPrevPage = () => {
+    setPageNumber(prev => Math.max(prev - 1, 1))
+  }
+
+  const goToNextPage = () => {
+    setPageNumber(prev => Math.min(prev + 1, numPages))
+  }
+
+  const zoomIn = () => {
+    setScale(prev => Math.min(prev + 0.2, 2.0))
+  }
+
+  const zoomOut = () => {
+    setScale(prev => Math.max(prev - 0.2, 0.5))
   }
 
   useEffect(() => {
@@ -288,18 +332,18 @@ function PaperDetail() {
         </div>
       </div>
 
-      {/* Enhanced PDF Preview Modal */}
+      {/* React-PDF Preview Modal */}
       {showPreview && paper?.fileUrl && (
         <div 
           className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-2 sm:p-4"
           onClick={(e) => {
-            // Close on backdrop click
             if (e.target === e.currentTarget) {
               setShowPreview(false)
             }
           }}
         >
           <div className="bg-slate-900 rounded-lg w-full h-full max-w-7xl max-h-[95vh] flex flex-col shadow-2xl">
+            {/* Header */}
             <div className="flex justify-between items-center p-3 sm:p-4 border-b border-slate-700 bg-slate-800">
               <h3 className="text-sm sm:text-lg font-semibold text-white truncate flex-1 pr-4">
                 PDF Preview: {paper.title}
@@ -313,8 +357,7 @@ function PaperDetail() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <OpenInNew fontSize="small" />
-                  <span className="hidden sm:inline">Open in New Tab</span>
-                  <span className="sm:hidden">Open</span>
+                  <span className="hidden sm:inline">Open External</span>
                 </a>
                 <button
                   onClick={() => setShowPreview(false)}
@@ -325,65 +368,110 @@ function PaperDetail() {
               </div>
             </div>
             
-            {/* PDF Viewer Container */}
-            <div className="flex-1 relative bg-slate-800">
-              {previewLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">
-                  <div className="text-center">
-                    <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-slate-400">Loading PDF preview...</p>
-                  </div>
+            {/* Controls */}
+            {!pdfError && numPages && (
+              <div className="flex items-center justify-between p-2 sm:p-3 bg-slate-800 border-b border-slate-700">
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={goToPrevPage}
+                    disabled={pageNumber <= 1}
+                    className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                  >
+                    <NavigateBefore />
+                  </button>
+                  <span className="text-white text-sm px-3">
+                    Page {pageNumber} of {numPages}
+                  </span>
+                  <button
+                    onClick={goToNextPage}
+                    disabled={pageNumber >= numPages}
+                    className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                  >
+                    <NavigateNext />
+                  </button>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={zoomOut}
+                    disabled={scale <= 0.5}
+                    className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                  >
+                    <ZoomOut />
+                  </button>
+                  <span className="text-white text-sm px-2">
+                    {Math.round(scale * 100)}%
+                  </span>
+                  <button
+                    onClick={zoomIn}
+                    disabled={scale >= 2.0}
+                    className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                  >
+                    <ZoomIn />
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* PDF Viewer */}
+            <div className="flex-1 overflow-auto bg-slate-800 flex items-center justify-center p-4">
+              {pdfLoading && (
+                <div className="text-center">
+                  <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-slate-400">Loading PDF preview...</p>
                 </div>
               )}
               
-              {!previewError ? (
-                <object
-                  data={paper.fileUrl}
-                  type="application/pdf"
-                  className="w-full h-full"
-                  onLoad={() => setPreviewLoading(false)}
-                  onError={() => {
-                    setPreviewError(true)
-                    setPreviewLoading(false)
+              {!pdfError ? (
+                <Document
+                  file={paper.fileUrl}
+                  onLoadSuccess={onDocumentLoadSuccess}
+                  onLoadError={onDocumentLoadError}
+                  loading={
+                    <div className="text-center">
+                      <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4"></div>
+                      <p className="text-slate-400">Loading PDF...</p>
+                    </div>
+                  }
+                  className="flex justify-center"
+                  options={{
+                    cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
+                    cMapPacked: true,
+                    standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts`,
                   }}
                 >
-                  <iframe
-                    src={`${paper.fileUrl}#view=FitH&toolbar=1&navpanes=0`}
-                    className="w-full h-full border-0"
-                    title="PDF Preview"
-                    onLoad={() => setPreviewLoading(false)}
-                    onError={() => {
-                      setPreviewError(true)
-                      setPreviewLoading(false)
-                    }}
+                  <Page
+                    pageNumber={pageNumber}
+                    scale={scale}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    className="shadow-2xl"
                   />
-                </object>
+                </Document>
               ) : (
-                <div className="flex-1 flex items-center justify-center h-full">
-                  <div className="text-center p-8">
-                    <PictureAsPdf className="text-slate-600 text-6xl mb-4 mx-auto" />
-                    <h3 className="text-xl font-bold text-white mb-2">Preview Not Available</h3>
-                    <p className="text-slate-400 mb-6">
-                      Your browser cannot display this PDF inline. Please use one of the options below:
-                    </p>
-                    <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 justify-center">
-                      <a
-                        href={paper.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-md btn-primary flex items-center justify-center space-x-2"
-                      >
-                        <OpenInNew fontSize="small" />
-                        <span>Open in New Tab</span>
-                      </a>
-                      <button
-                        onClick={handleDownload}
-                        className="btn-md btn-secondary flex items-center justify-center space-x-2"
-                      >
-                        <Download fontSize="small" />
-                        <span>Download PDF</span>
-                      </button>
-                    </div>
+                <div className="text-center p-8">
+                  <PictureAsPdf className="text-slate-600 text-6xl mb-4 mx-auto" />
+                  <h3 className="text-xl font-bold text-white mb-2">Preview Not Available</h3>
+                  <p className="text-slate-400 mb-6">
+                    Unable to load PDF preview. Please try downloading or opening in a new tab.
+                  </p>
+                  <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 justify-center">
+                    <a
+                      href={paper.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-md btn-primary flex items-center justify-center space-x-2"
+                    >
+                      <OpenInNew fontSize="small" />
+                      <span>Open in New Tab</span>
+                    </a>
+                    <button
+                      onClick={handleDownload}
+                      className="btn-md btn-secondary flex items-center justify-center space-x-2"
+                    >
+                      <Download fontSize="small" />
+                      <span>Download PDF</span>
+                    </button>
                   </div>
                 </div>
               )}
