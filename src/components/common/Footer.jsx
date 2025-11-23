@@ -206,8 +206,9 @@ function Footer() {
             </div>
             <div className="hidden sm:block w-px h-4 bg-slate-700"></div>
             <div className="flex items-center space-x-1">
-              <span>Made with by</span>
+              <span>Made with</span>
               <Favorite className="text-red-400 text-base" />
+              <span>by</span>
               <span className="text-cyan-400"><a href="https://wa.me/916283380110">Nitin Kumar</a></span>
               <span>&</span>
               <span className="text-cyan-400"><a href="https://easebuilds.in">EaseBuilds</a></span>
