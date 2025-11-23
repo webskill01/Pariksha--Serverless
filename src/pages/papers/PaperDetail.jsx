@@ -1,4 +1,4 @@
-// src/pages/papers/PaperDetail.jsx - Enhanced PDF Preview
+// src/pages/papers/PaperDetail.jsx - Fixed PDF Preview
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -25,6 +25,7 @@ function PaperDetail() {
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(false)
 
   const { id: paperId } = useParams()
@@ -80,6 +81,7 @@ function PaperDetail() {
         const link = document.createElement('a')
         link.href = fileUrl
         link.download = cleanFilename
+        link.target = '_blank'
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
@@ -102,6 +104,7 @@ function PaperDetail() {
   const handlePreview = () => {
     if (paper?.fileUrl) {
       setShowPreview(true)
+      setPreviewLoading(true)
       setPreviewError(false)
     } else {
       toast.error('Preview not available')
@@ -166,14 +169,6 @@ function PaperDetail() {
     { label: paper.subject || 'Subject' },
     { label: paper.title || 'Paper' }
   ]
-
-  // Generate preview URL with fallback options
-  const getPreviewUrl = () => {
-    if (!paper?.fileUrl) return null;
-    
-    // Try direct URL first with PDF parameters
-    return `${paper.fileUrl}#view=FitH&toolbar=1&navpanes=0&scrollbar=1`;
-  }
 
   return (
     <div className="container-custom px-3 py-4 sm:px-6 sm:py-8">
@@ -295,73 +290,109 @@ function PaperDetail() {
 
       {/* Enhanced PDF Preview Modal */}
       {showPreview && paper?.fileUrl && (
-        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-4">
+        <div 
+          className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-2 sm:p-4"
+          onClick={(e) => {
+            // Close on backdrop click
+            if (e.target === e.currentTarget) {
+              setShowPreview(false)
+            }
+          }}
+        >
           <div className="bg-slate-900 rounded-lg w-full h-full max-w-7xl max-h-[95vh] flex flex-col shadow-2xl">
-            <div className="flex justify-between items-center p-3 sm:p-4 border-b border-slate-700">
+            <div className="flex justify-between items-center p-3 sm:p-4 border-b border-slate-700 bg-slate-800">
               <h3 className="text-sm sm:text-lg font-semibold text-white truncate flex-1 pr-4">
-                {paper.title}
+                PDF Preview: {paper.title}
               </h3>
               <div className="flex items-center space-x-2">
                 <a
                   href={paper.fileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-3 py-1 rounded-lg hover:bg-slate-800 transition-colors"
+                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <OpenInNew fontSize="small" />
                   <span className="hidden sm:inline">Open in New Tab</span>
+                  <span className="sm:hidden">Open</span>
                 </a>
                 <button
                   onClick={() => setShowPreview(false)}
-                  className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-800"
+                  className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-700"
                 >
                   <Close />
                 </button>
               </div>
             </div>
             
-            {!previewError ? (
-              <iframe
-                src={getPreviewUrl()}
-                className="flex-1 w-full border-0 rounded-b-lg bg-white"
-                title="PDF Preview"
-                allow="fullscreen"
-                onError={() => setPreviewError(true)}
-              />
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center p-8">
-                  <PictureAsPdf className="text-slate-600 text-6xl mb-4 mx-auto" />
-                  <h3 className="text-xl font-bold text-white mb-2">Preview Not Available</h3>
-                  <p className="text-slate-400 mb-4">
-                    Unable to load preview. You can download the PDF instead.
-                  </p>
-                  <div className="flex space-x-3 justify-center">
-                    <button
-                      onClick={handleDownload}
-                      className="btn-md btn-primary"
-                    >
-                      <Download fontSize="small" />
-                      <span>Download PDF</span>
-                    </button>
-                    <a
-                      href={paper.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-md btn-secondary"
-                    >
-                      <OpenInNew fontSize="small" />
-                      <span>Open External</span>
-                    </a>
+            {/* PDF Viewer Container */}
+            <div className="flex-1 relative bg-slate-800">
+              {previewLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">
+                  <div className="text-center">
+                    <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-slate-400">Loading PDF preview...</p>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+              
+              {!previewError ? (
+                <object
+                  data={paper.fileUrl}
+                  type="application/pdf"
+                  className="w-full h-full"
+                  onLoad={() => setPreviewLoading(false)}
+                  onError={() => {
+                    setPreviewError(true)
+                    setPreviewLoading(false)
+                  }}
+                >
+                  <iframe
+                    src={`${paper.fileUrl}#view=FitH&toolbar=1&navpanes=0`}
+                    className="w-full h-full border-0"
+                    title="PDF Preview"
+                    onLoad={() => setPreviewLoading(false)}
+                    onError={() => {
+                      setPreviewError(true)
+                      setPreviewLoading(false)
+                    }}
+                  />
+                </object>
+              ) : (
+                <div className="flex-1 flex items-center justify-center h-full">
+                  <div className="text-center p-8">
+                    <PictureAsPdf className="text-slate-600 text-6xl mb-4 mx-auto" />
+                    <h3 className="text-xl font-bold text-white mb-2">Preview Not Available</h3>
+                    <p className="text-slate-400 mb-6">
+                      Your browser cannot display this PDF inline. Please use one of the options below:
+                    </p>
+                    <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 justify-center">
+                      <a
+                        href={paper.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-md btn-primary flex items-center justify-center space-x-2"
+                      >
+                        <OpenInNew fontSize="small" />
+                        <span>Open in New Tab</span>
+                      </a>
+                      <button
+                        onClick={handleDownload}
+                        className="btn-md btn-secondary flex items-center justify-center space-x-2"
+                      >
+                        <Download fontSize="small" />
+                        <span>Download PDF</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Rest of your component remains the same */}
+      {/* Quick Stats Card */}
       <div className="mt-4 sm:mt-6">
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">
@@ -384,6 +415,7 @@ function PaperDetail() {
         </div>
       </div>
 
+      {/* Quick Navigation Links */}
       <div className="mt-4 sm:mt-6">
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">

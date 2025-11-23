@@ -1,3 +1,4 @@
+// api/_lib/upload.js - Corrected with inline disposition
 import multer from 'multer';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
@@ -31,10 +32,17 @@ export const uploadToR2 = async (fileBuffer, fileName, mimeType) => {
       Key: fileName,
       Body: fileBuffer,
       ContentType: mimeType,
+      ContentDisposition: 'inline', // ✅ CRITICAL: Force inline viewing instead of download
+      CacheControl: 'public, max-age=31536000', // Cache for 1 year
+      Metadata: {
+        'uploaded-at': new Date().toISOString(),
+      },
     });
     
     await client.send(command);
-    return `${process.env.R2_PUBLIC_URL}/${fileName}`;
+    const fileUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`;
+    console.log(`✅ File uploaded: ${fileUrl}`);
+    return fileUrl;
   } catch (error) {
     console.error("R2 upload error:", error);
     throw new Error("Failed to upload file to cloud storage");
@@ -60,7 +68,9 @@ export const deleteFromR2 = async (fileName) => {
   }
 };
 
+// Multer configuration for file uploads
 const storage = multer.memoryStorage();
+
 const fileFilter = (req, file, cb) => {
   if (file.mimetype === "application/pdf") {
     cb(null, true);
@@ -72,5 +82,8 @@ const fileFilter = (req, file, cb) => {
 export const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+  limits: { 
+    fileSize: 10 * 1024 * 1024, // 10MB
+    files: 1 // Only one file at a time
+  }
 });
