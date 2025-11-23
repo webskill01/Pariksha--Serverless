@@ -1,6 +1,7 @@
-// src/pages/papers/PaperDetail.jsx - With react-pdf Viewer
+// src/pages/papers/PaperDetail.jsx - Fixed Modal Rendering
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import { toast } from 'react-toastify'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
@@ -121,9 +122,17 @@ function PaperDetail() {
       setPdfError(false)
       setPageNumber(1)
       setScale(1.0)
+      // Prevent body scroll when modal is open
+      document.body.style.overflow = 'hidden'
     } else {
       toast.error('Preview not available')
     }
+  }
+
+  const closePreview = () => {
+    setShowPreview(false)
+    // Restore body scroll
+    document.body.style.overflow = 'unset'
   }
 
   const handleShare = async () => {
@@ -163,7 +172,7 @@ function PaperDetail() {
   }
 
   const goToNextPage = () => {
-    setPageNumber(prev => Math.min(prev + 1, numPages))
+    setPageNumber(prev => Math.min(prev + 1, numPages || 1))
   }
 
   const zoomIn = () => {
@@ -177,6 +186,13 @@ function PaperDetail() {
   useEffect(() => {
     fetchPaperDetails()
   }, [paperId])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [])
 
   if (loading) {
     return (
@@ -214,330 +230,338 @@ function PaperDetail() {
     { label: paper.title || 'Paper' }
   ]
 
-  return (
-    <div className="container-custom px-3 py-4 sm:px-6 sm:py-8">
-      
-      <div className="hidden sm:block mb-4">
-        <Breadcrumb items={breadcrumbItems} />
-      </div>
+  // PDF Preview Modal Component
+  const PreviewModal = () => {
+    if (!showPreview || !paper?.fileUrl) return null
 
-      <Link 
-        to="/papers"
-        className="inline-flex items-center space-x-2 text-slate-400 hover:text-cyan-400 mb-4 transition-colors duration-200 text-sm"
+    return createPortal(
+      <div 
+        className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-2 sm:p-4"
+        style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
       >
-        <ArrowBack fontSize="small" />
-        <span>Back to Browse</span>
-      </Link>
-
-      <div className="card glass-strong">
-        <div className="card-body p-4 sm:p-6">
-          
-          <div className="flex items-start space-x-3 mb-4 sm:mb-6">
-            <div className="p-2.5 sm:p-3 rounded-xl bg-red-500/20 flex-shrink-0">
-              <PictureAsPdf className="text-red-400 text-xl sm:text-2xl" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold text-white mb-2 line-clamp-2 leading-tight">
-                {paper.title}
-              </h1>
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-slate-400">
-                <StatusBadge status={paper.status} />
-                <span>•</span>
-                <span>{paper.downloadCount || 0} downloads</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-slate-900/40 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
-            <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:gap-x-4 sm:gap-y-3 text-xs sm:text-sm">
-              <div className="text-slate-500 font-medium">Subject</div>
-              <div className="text-white font-semibold">{paper.subject || 'N/A'}</div>
-              
-              <div className="text-slate-500 font-medium">Class</div>
-              <div className="text-white font-semibold">{paper.class || 'N/A'}</div>
-              
-              <div className="text-slate-500 font-medium">Semester</div>
-              <div className="text-white font-semibold">{paper.semester || 'N/A'}</div>
-              
-              <div className="text-slate-500 font-medium">Year</div>
-              <div className="text-white font-semibold">{paper.year || 'N/A'}</div>
-              
-              <div className="text-slate-500 font-medium">Exam Type</div>
-              <div className="text-white font-semibold">{paper.examType || 'N/A'}</div>
-              
-              <div className="text-slate-500 font-medium">Uploaded By</div>
-              <div className="text-white font-semibold">{paper.uploadedBy?.name || 'Anonymous'}</div>
-              
-              <div className="text-slate-500 font-medium">Upload Date</div>
-              <div className="text-white font-semibold">
-                {paper.createdAt ? new Date(paper.createdAt).toLocaleDateString() : 'N/A'}
-              </div>
-            </div>
-          </div>
-
-          {paper.tags && paper.tags.length > 0 && (
-            <div className="mb-4 sm:mb-6">
-              <div className="flex items-center space-x-2 mb-2">
-                <TagIcon className="text-slate-400" fontSize="small" />
-                <h3 className="text-sm sm:text-base font-semibold text-white">Tags</h3>
-              </div>
-              <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                {paper.tags.map((tag, index) => (
-                  <span
-                    key={index}
-                    className="px-2 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-xs border border-cyan-500/30"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <button
-              onClick={handlePreview}
-              className="btn-md btn-secondary flex items-center justify-center space-x-2"
-            >
-              <Visibility fontSize="small" />
-              <span>Preview PDF</span>
-            </button>
-
-            <button
-              onClick={handleDownload}
-              disabled={downloading}
-              className="btn-md btn-primary flex items-center justify-center space-x-2"
-            >
-              {downloading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>Downloading...</span>
-                </>
-              ) : (
-                <>
-                  <Download fontSize="small" />
-                  <span>Download PDF</span>
-                </>
-              )}
-            </button>
-            
-            <button
-              onClick={handleShare}
-              className="btn-md btn-secondary flex items-center justify-center space-x-2"
-            >
-              <Share fontSize="small" />
-              <span>Share</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* React-PDF Preview Modal */}
-      {showPreview && paper?.fileUrl && (
         <div 
-          className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-2 sm:p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowPreview(false)
-            }
-          }}
+          className="bg-slate-900 rounded-lg w-full h-full max-w-7xl max-h-[95vh] flex flex-col shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className="bg-slate-900 rounded-lg w-full h-full max-w-7xl max-h-[95vh] flex flex-col shadow-2xl">
-            {/* Header */}
-            <div className="flex justify-between items-center p-3 sm:p-4 border-b border-slate-700 bg-slate-800">
-              <h3 className="text-sm sm:text-lg font-semibold text-white truncate flex-1 pr-4">
-                PDF Preview: {paper.title}
-              </h3>
+          {/* Header */}
+          <div className="flex justify-between items-center p-3 sm:p-4 border-b border-slate-700 bg-slate-800 flex-shrink-0">
+            <h3 className="text-sm sm:text-lg font-semibold text-white truncate flex-1 pr-4">
+              PDF Preview: {paper.title}
+            </h3>
+            <div className="flex items-center space-x-2">
+              <a
+                href={paper.fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
+              >
+                <OpenInNew fontSize="small" />
+                <span className="hidden sm:inline">Open External</span>
+              </a>
+              <button
+                onClick={closePreview}
+                className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-700"
+              >
+                <Close />
+              </button>
+            </div>
+          </div>
+          
+          {/* Controls */}
+          {!pdfError && numPages && (
+            <div className="flex items-center justify-between p-2 sm:p-3 bg-slate-800 border-b border-slate-700 flex-shrink-0">
               <div className="flex items-center space-x-2">
-                <a
-                  href={paper.fileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <OpenInNew fontSize="small" />
-                  <span className="hidden sm:inline">Open External</span>
-                </a>
                 <button
-                  onClick={() => setShowPreview(false)}
-                  className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-700"
+                  onClick={goToPrevPage}
+                  disabled={pageNumber <= 1}
+                  className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
                 >
-                  <Close />
+                  <NavigateBefore />
+                </button>
+                <span className="text-white text-sm px-3">
+                  Page {pageNumber} of {numPages}
+                </span>
+                <button
+                  onClick={goToNextPage}
+                  disabled={pageNumber >= numPages}
+                  className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                >
+                  <NavigateNext />
+                </button>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={zoomOut}
+                  disabled={scale <= 0.5}
+                  className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                >
+                  <ZoomOut />
+                </button>
+                <span className="text-white text-sm px-2">
+                  {Math.round(scale * 100)}%
+                </span>
+                <button
+                  onClick={zoomIn}
+                  disabled={scale >= 2.0}
+                  className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                >
+                  <ZoomIn />
                 </button>
               </div>
             </div>
+          )}
+          
+          {/* PDF Viewer */}
+          <div className="flex-1 overflow-auto bg-slate-800 flex items-center justify-center p-4">
+            {pdfLoading && (
+              <div className="text-center">
+                <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-slate-400">Loading PDF preview...</p>
+              </div>
+            )}
             
-            {/* Controls */}
-            {!pdfError && numPages && (
-              <div className="flex items-center justify-between p-2 sm:p-3 bg-slate-800 border-b border-slate-700">
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={goToPrevPage}
-                    disabled={pageNumber <= 1}
-                    className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+            {!pdfError ? (
+              <Document
+                file={paper.fileUrl}
+                onLoadSuccess={onDocumentLoadSuccess}
+                onLoadError={onDocumentLoadError}
+                loading={
+                  <div className="text-center">
+                    <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-slate-400">Loading PDF...</p>
+                  </div>
+                }
+                className="flex justify-center"
+                options={{
+                  cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
+                  cMapPacked: true,
+                  standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts`,
+                }}
+              >
+                <Page
+                  pageNumber={pageNumber}
+                  scale={scale}
+                  renderTextLayer={true}
+                  renderAnnotationLayer={true}
+                  className="shadow-2xl"
+                />
+              </Document>
+            ) : (
+              <div className="text-center p-8">
+                <PictureAsPdf className="text-slate-600 text-6xl mb-4 mx-auto" />
+                <h3 className="text-xl font-bold text-white mb-2">Preview Not Available</h3>
+                <p className="text-slate-400 mb-6">
+                  Unable to load PDF preview. Please try downloading or opening in a new tab.
+                </p>
+                <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 justify-center">
+                  <a
+                    href={paper.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-md btn-primary flex items-center justify-center space-x-2"
                   >
-                    <NavigateBefore />
-                  </button>
-                  <span className="text-white text-sm px-3">
-                    Page {pageNumber} of {numPages}
-                  </span>
+                    <OpenInNew fontSize="small" />
+                    <span>Open in New Tab</span>
+                  </a>
                   <button
-                    onClick={goToNextPage}
-                    disabled={pageNumber >= numPages}
-                    className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                    onClick={handleDownload}
+                    className="btn-md btn-secondary flex items-center justify-center space-x-2"
                   >
-                    <NavigateNext />
-                  </button>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={zoomOut}
-                    disabled={scale <= 0.5}
-                    className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
-                  >
-                    <ZoomOut />
-                  </button>
-                  <span className="text-white text-sm px-2">
-                    {Math.round(scale * 100)}%
-                  </span>
-                  <button
-                    onClick={zoomIn}
-                    disabled={scale >= 2.0}
-                    className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
-                  >
-                    <ZoomIn />
+                    <Download fontSize="small" />
+                    <span>Download PDF</span>
                   </button>
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      </div>,
+      document.body
+    )
+  }
+
+  return (
+    <>
+      <div className="container-custom px-3 py-4 sm:px-6 sm:py-8">
+        
+        <div className="hidden sm:block mb-4">
+          <Breadcrumb items={breadcrumbItems} />
+        </div>
+
+        <Link 
+          to="/papers"
+          className="inline-flex items-center space-x-2 text-slate-400 hover:text-cyan-400 mb-4 transition-colors duration-200 text-sm"
+        >
+          <ArrowBack fontSize="small" />
+          <span>Back to Browse</span>
+        </Link>
+
+        <div className="card glass-strong">
+          <div className="card-body p-4 sm:p-6">
             
-            {/* PDF Viewer */}
-            <div className="flex-1 overflow-auto bg-slate-800 flex items-center justify-center p-4">
-              {pdfLoading && (
-                <div className="text-center">
-                  <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-slate-400">Loading PDF preview...</p>
+            <div className="flex items-start space-x-3 mb-4 sm:mb-6">
+              <div className="p-2.5 sm:p-3 rounded-xl bg-red-500/20 flex-shrink-0">
+                <PictureAsPdf className="text-red-400 text-xl sm:text-2xl" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold text-white mb-2 line-clamp-2 leading-tight">
+                  {paper.title}
+                </h1>
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-slate-400">
+                  <StatusBadge status={paper.status} />
+                  <span>•</span>
+                  <span>{paper.downloadCount || 0} downloads</span>
                 </div>
-              )}
+              </div>
+            </div>
+
+            <div className="bg-slate-900/40 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:gap-x-4 sm:gap-y-3 text-xs sm:text-sm">
+                <div className="text-slate-500 font-medium">Subject</div>
+                <div className="text-white font-semibold">{paper.subject || 'N/A'}</div>
+                
+                <div className="text-slate-500 font-medium">Class</div>
+                <div className="text-white font-semibold">{paper.class || 'N/A'}</div>
+                
+                <div className="text-slate-500 font-medium">Semester</div>
+                <div className="text-white font-semibold">{paper.semester || 'N/A'}</div>
+                
+                <div className="text-slate-500 font-medium">Year</div>
+                <div className="text-white font-semibold">{paper.year || 'N/A'}</div>
+                
+                <div className="text-slate-500 font-medium">Exam Type</div>
+                <div className="text-white font-semibold">{paper.examType || 'N/A'}</div>
+                
+                <div className="text-slate-500 font-medium">Uploaded By</div>
+                <div className="text-white font-semibold">{paper.uploadedBy?.name || 'Anonymous'}</div>
+                
+                <div className="text-slate-500 font-medium">Upload Date</div>
+                <div className="text-white font-semibold">
+                  {paper.createdAt ? new Date(paper.createdAt).toLocaleDateString() : 'N/A'}
+                </div>
+              </div>
+            </div>
+
+            {paper.tags && paper.tags.length > 0 && (
+              <div className="mb-4 sm:mb-6">
+                <div className="flex items-center space-x-2 mb-2">
+                  <TagIcon className="text-slate-400" fontSize="small" />
+                  <h3 className="text-sm sm:text-base font-semibold text-white">Tags</h3>
+                </div>
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                  {paper.tags.map((tag, index) => (
+                    <span
+                      key={index}
+                      className="px-2 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-xs border border-cyan-500/30"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                onClick={handlePreview}
+                className="btn-md btn-secondary flex items-center justify-center space-x-2"
+              >
+                <Visibility fontSize="small" />
+                <span>Preview PDF</span>
+              </button>
+
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                className="btn-md btn-primary flex items-center justify-center space-x-2"
+              >
+                {downloading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    <span>Downloading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download fontSize="small" />
+                    <span>Download PDF</span>
+                  </>
+                )}
+              </button>
               
-              {!pdfError ? (
-                <Document
-                  file={paper.fileUrl}
-                  onLoadSuccess={onDocumentLoadSuccess}
-                  onLoadError={onDocumentLoadError}
-                  loading={
-                    <div className="text-center">
-                      <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4"></div>
-                      <p className="text-slate-400">Loading PDF...</p>
-                    </div>
-                  }
-                  className="flex justify-center"
-                  options={{
-                    cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
-                    cMapPacked: true,
-                    standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts`,
-                  }}
-                >
-                  <Page
-                    pageNumber={pageNumber}
-                    scale={scale}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    className="shadow-2xl"
-                  />
-                </Document>
-              ) : (
-                <div className="text-center p-8">
-                  <PictureAsPdf className="text-slate-600 text-6xl mb-4 mx-auto" />
-                  <h3 className="text-xl font-bold text-white mb-2">Preview Not Available</h3>
-                  <p className="text-slate-400 mb-6">
-                    Unable to load PDF preview. Please try downloading or opening in a new tab.
-                  </p>
-                  <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 justify-center">
-                    <a
-                      href={paper.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-md btn-primary flex items-center justify-center space-x-2"
-                    >
-                      <OpenInNew fontSize="small" />
-                      <span>Open in New Tab</span>
-                    </a>
-                    <button
-                      onClick={handleDownload}
-                      className="btn-md btn-secondary flex items-center justify-center space-x-2"
-                    >
-                      <Download fontSize="small" />
-                      <span>Download PDF</span>
-                    </button>
-                  </div>
+              <button
+                onClick={handleShare}
+                className="btn-md btn-secondary flex items-center justify-center space-x-2"
+              >
+                <Share fontSize="small" />
+                <span>Share</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Stats Card */}
+        <div className="mt-4 sm:mt-6">
+          <div className="card glass bg-slate-800/30 border border-slate-700/50">
+            <div className="p-3 sm:p-4">
+              <h3 className="text-sm sm:text-base font-semibold text-white mb-3">Quick Stats</h3>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-lg sm:text-xl font-bold text-cyan-400">{paper.downloadCount || 0}</div>
+                  <div className="text-xs text-slate-400">Downloads</div>
                 </div>
-              )}
+                <div>
+                  <div className="text-lg sm:text-xl font-bold text-green-400">{paper.status}</div>
+                  <div className="text-xs text-slate-400">Status</div>
+                </div>
+                <div>
+                  <div className="text-lg sm:text-xl font-bold text-purple-400">PDF</div>
+                  <div className="text-xs text-slate-400">Format</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Quick Stats Card */}
-      <div className="mt-4 sm:mt-6">
-        <div className="card glass bg-slate-800/30 border border-slate-700/50">
-          <div className="p-3 sm:p-4">
-            <h3 className="text-sm sm:text-base font-semibold text-white mb-3">Quick Stats</h3>
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <div className="text-lg sm:text-xl font-bold text-cyan-400">{paper.downloadCount || 0}</div>
-                <div className="text-xs text-slate-400">Downloads</div>
-              </div>
-              <div>
-                <div className="text-lg sm:text-xl font-bold text-green-400">{paper.status}</div>
-                <div className="text-xs text-slate-400">Status</div>
-              </div>
-              <div>
-                <div className="text-lg sm:text-xl font-bold text-purple-400">PDF</div>
-                <div className="text-xs text-slate-400">Format</div>
+        {/* Quick Navigation Links */}
+        <div className="mt-4 sm:mt-6">
+          <div className="card glass bg-slate-800/30 border border-slate-700/50">
+            <div className="p-3 sm:p-4">
+              <h3 className="text-sm sm:text-base font-semibold text-white mb-3">Find More Papers</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
+                <Link 
+                  to={`/papers?subject=${encodeURIComponent(paper.subject || '')}`}
+                  className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
+                >
+                  <span className='flex items-center'>More {paper.subject} Papers <ArrowForward fontSize='small'/></span>
+                </Link>
+                <Link 
+                  to={`/papers?class=${encodeURIComponent(paper.class || '')}`}
+                  className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
+                >
+                  <span className='flex items-center'>More {paper.class} Papers <ArrowForward fontSize='small'/></span>
+                </Link>
+                <Link 
+                  to={`/papers?examType=${paper.examType}`}
+                  className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
+                >
+                  <span className='flex items-center'>More {paper.examType} Papers <ArrowForward fontSize='small'/></span>
+                </Link>
+                <Link 
+                  to="/papers"
+                  className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
+                >
+                  <span className='flex items-center'>Browse All Papers <ArrowForward fontSize='small'/></span>
+                </Link>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Quick Navigation Links */}
-      <div className="mt-4 sm:mt-6">
-        <div className="card glass bg-slate-800/30 border border-slate-700/50">
-          <div className="p-3 sm:p-4">
-            <h3 className="text-sm sm:text-base font-semibold text-white mb-3">Find More Papers</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
-              <Link 
-                to={`/papers?subject=${encodeURIComponent(paper.subject || '')}`}
-                className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
-              >
-                <span className='flex items-center'>More {paper.subject} Papers <ArrowForward fontSize='small'/></span>
-              </Link>
-              <Link 
-                to={`/papers?class=${encodeURIComponent(paper.class || '')}`}
-                className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
-              >
-                <span className='flex items-center'>More {paper.class} Papers <ArrowForward fontSize='small'/></span>
-              </Link>
-              <Link 
-                to={`/papers?examType=${paper.examType}`}
-                className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
-              >
-                <span className='flex items-center'>More {paper.examType} Papers <ArrowForward fontSize='small'/></span>
-              </Link>
-              <Link 
-                to="/papers"
-                className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
-              >
-                <span className='flex items-center'>Browse All Papers <ArrowForward fontSize='small'/></span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      {/* Render Modal using Portal */}
+      <PreviewModal />
+    </>
   )
 }
 
