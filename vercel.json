@@ -3,7 +3,29 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    }
+  },
   "rewrites": [
+    {
+      "source": "/api/auth/:path*",
+      "destination": "/api/auth"
+    },
+    {
+      "source": "/api/papers/:path*",
+      "destination": "/api/papers"
+    },
+    {
+      "source": "/api/admin/:path*",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/api/user/:path*",
+      "destination": "/api/user"
+    },
     {
       "source": "/api/(.*)",
       "destination": "/api/$1"
