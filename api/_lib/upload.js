@@ -1,4 +1,4 @@
-// api/_lib/upload.js - Corrected with inline disposition
+// api/_lib/upload.js - Force inline disposition
 import multer from 'multer';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
@@ -31,9 +31,9 @@ export const uploadToR2 = async (fileBuffer, fileName, mimeType) => {
       Bucket: process.env.R2_BUCKET,
       Key: fileName,
       Body: fileBuffer,
-      ContentType: mimeType,
-      ContentDisposition: 'inline', // ✅ CRITICAL: Force inline viewing instead of download
-      CacheControl: 'public, max-age=31536000', // Cache for 1 year
+      ContentType: 'application/pdf',
+      ContentDisposition: 'inline; filename="' + fileName + '"', // ✅ FORCE INLINE with filename
+      CacheControl: 'public, max-age=31536000',
       Metadata: {
         'uploaded-at': new Date().toISOString(),
       },
@@ -41,7 +41,7 @@ export const uploadToR2 = async (fileBuffer, fileName, mimeType) => {
     
     await client.send(command);
     const fileUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`;
-    console.log(`✅ File uploaded: ${fileUrl}`);
+    console.log(`✅ File uploaded with inline disposition: ${fileUrl}`);
     return fileUrl;
   } catch (error) {
     console.error("R2 upload error:", error);
@@ -68,7 +68,6 @@ export const deleteFromR2 = async (fileName) => {
   }
 };
 
-// Multer configuration for file uploads
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
@@ -83,7 +82,7 @@ export const upload = multer({
   storage,
   fileFilter,
   limits: { 
-    fileSize: 10 * 1024 * 1024, // 10MB
-    files: 1 // Only one file at a time
+    fileSize: 10 * 1024 * 1024,
+    files: 1
   }
 });

@@ -1,4 +1,4 @@
-import { S3Client, ListObjectsV2Command, CopyObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, HeadObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -12,11 +12,10 @@ const r2Client = new S3Client({
   },
 });
 
-async function fixAllPDFs() {
+async function checkAndFixFiles() {
   try {
-    console.log('🔧 Starting R2 metadata fix...');
+    console.log('🔍 Checking R2 files...\n');
     
-    // List all objects
     const listCommand = new ListObjectsV2Command({
       Bucket: process.env.R2_BUCKET,
     });
@@ -24,31 +23,47 @@ async function fixAllPDFs() {
     const response = await r2Client.send(listCommand);
     const objects = response.Contents || [];
     
-    console.log(`📁 Found ${objects.length} files`);
+    console.log(`📁 Found ${objects.length} files\n`);
     
-    // Fix each PDF
     for (const obj of objects) {
       if (obj.Key.endsWith('.pdf')) {
-        console.log(`  ✓ Fixing: ${obj.Key}`);
-        
-        // Copy object to itself with new metadata
-        const copyCommand = new CopyObjectCommand({
+        // Check current metadata
+        const headCommand = new HeadObjectCommand({
           Bucket: process.env.R2_BUCKET,
-          CopySource: `${process.env.R2_BUCKET}/${obj.Key}`,
           Key: obj.Key,
-          ContentType: 'application/pdf',
-          ContentDisposition: 'inline', // Force inline
-          MetadataDirective: 'REPLACE',
         });
         
-        await r2Client.send(copyCommand);
+        const metadata = await r2Client.send(headCommand);
+        const currentDisposition = metadata.ContentDisposition || 'NOT SET';
+        
+        console.log(`📄 ${obj.Key}`);
+        console.log(`   Current: ${currentDisposition}`);
+        
+        if (currentDisposition !== 'inline') {
+          console.log(`   ⚠️  Fixing...`);
+          
+          // Fix the metadata
+          const copyCommand = new CopyObjectCommand({
+            Bucket: process.env.R2_BUCKET,
+            CopySource: `${process.env.R2_BUCKET}/${obj.Key}`,
+            Key: obj.Key,
+            ContentType: 'application/pdf',
+            ContentDisposition: 'inline',
+            MetadataDirective: 'REPLACE',
+          });
+          
+          await r2Client.send(copyCommand);
+          console.log(`   ✅ Fixed to: inline\n`);
+        } else {
+          console.log(`   ✅ Already correct\n`);
+        }
       }
     }
     
-    console.log('✅ All PDFs fixed!');
+    console.log('🎉 All files checked and fixed!');
   } catch (error) {
     console.error('❌ Error:', error);
   }
 }
 
-fixAllPDFs();
+checkAndFixFiles();

@@ -1,4 +1,4 @@
-// src/pages/papers/PaperDetail.jsx - Simple Iframe Preview (No react-pdf)
+// src/pages/papers/PaperDetail.jsx - With Google Docs Viewer Fallback
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -25,6 +25,7 @@ function PaperDetail() {
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [useGoogleViewer, setUseGoogleViewer] = useState(false)
 
   const { id: paperId } = useParams()
   const navigate = useNavigate()
@@ -79,7 +80,6 @@ function PaperDetail() {
         const link = document.createElement('a')
         link.href = fileUrl
         link.download = cleanFilename
-        link.target = '_blank'
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
@@ -102,6 +102,7 @@ function PaperDetail() {
   const handlePreview = () => {
     if (paper?.fileUrl) {
       setShowPreview(true)
+      setUseGoogleViewer(false)
     } else {
       toast.error('Preview not available')
     }
@@ -109,6 +110,7 @@ function PaperDetail() {
 
   const closePreview = () => {
     setShowPreview(false)
+    setUseGoogleViewer(false)
   }
 
   const handleShare = async () => {
@@ -169,6 +171,19 @@ function PaperDetail() {
     { label: paper.subject || 'Subject' },
     { label: paper.title || 'Paper' }
   ]
+
+  // Generate preview URL
+  const getPreviewUrl = () => {
+    if (!paper?.fileUrl) return ''
+    
+    if (useGoogleViewer) {
+      // Use Google Docs Viewer as fallback
+      return `https://docs.google.com/viewer?url=${encodeURIComponent(paper.fileUrl)}&embedded=true`
+    } else {
+      // Try direct URL first
+      return `${paper.fileUrl}#toolbar=0&navpanes=0&scrollbar=1`
+    }
+  }
 
   return (
     <div className="container-custom px-3 py-4 sm:px-6 sm:py-8">
@@ -288,11 +303,10 @@ function PaperDetail() {
         </div>
       </div>
 
-      {/* Simple PDF Preview Modal - No react-pdf */}
+      {/* PDF Preview Modal with Fallback */}
       {showPreview && paper?.fileUrl && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center p-4"
-          style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%' }}
           onClick={closePreview}
         >
           <div 
@@ -300,11 +314,19 @@ function PaperDetail() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex justify-between items-center p-4 border-b border-slate-700 bg-slate-800">
+            <div className="flex justify-between items-center p-4 border-b border-slate-700 bg-slate-800 flex-shrink-0">
               <h3 className="text-lg font-semibold text-white truncate pr-4">
                 PDF Preview: {paper.title}
               </h3>
               <div className="flex items-center space-x-2">
+                {!useGoogleViewer && (
+                  <button
+                    onClick={() => setUseGoogleViewer(true)}
+                    className="text-yellow-400 hover:text-yellow-300 text-sm px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
+                  >
+                    Use Google Viewer
+                  </button>
+                )}
                 <a
                   href={paper.fileUrl}
                   target="_blank"
@@ -312,7 +334,7 @@ function PaperDetail() {
                   className="text-cyan-400 hover:text-cyan-300 text-sm flex items-center space-x-1 px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
                 >
                   <OpenInNew fontSize="small" />
-                  <span>Open in New Tab</span>
+                  <span>New Tab</span>
                 </a>
                 <button
                   onClick={closePreview}
@@ -323,20 +345,21 @@ function PaperDetail() {
               </div>
             </div>
             
-            {/* PDF Viewer - Simple Iframe */}
-            <div className="flex-1 bg-slate-800 p-2">
+            {/* PDF Viewer */}
+            <div className="flex-1 bg-slate-800 p-2 overflow-hidden">
               <iframe
-                src={`${paper.fileUrl}#view=FitH&toolbar=1`}
+                key={useGoogleViewer ? 'google' : 'direct'}
+                src={getPreviewUrl()}
                 className="w-full h-full border-0 rounded"
                 title="PDF Preview"
-                style={{ minHeight: '500px' }}
+                allow="fullscreen"
               />
             </div>
           </div>
         </div>
       )}
 
-      {/* Quick Stats Card */}
+      {/* Quick Stats and Navigation (same as before) */}
       <div className="mt-4 sm:mt-6">
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">
@@ -359,7 +382,6 @@ function PaperDetail() {
         </div>
       </div>
 
-      {/* Quick Navigation Links */}
       <div className="mt-4 sm:mt-6">
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">
