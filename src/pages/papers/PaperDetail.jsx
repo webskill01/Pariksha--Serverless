@@ -1,4 +1,4 @@
-// src/pages/papers/PaperDetail.jsx - PDF.js Viewer with Download Tracking
+// src/pages/papers/PaperDetail.jsx - Improved PDF Preview Modal
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -70,7 +70,6 @@ function PaperDetail() {
 
     setDownloading(true)
     try {
-      // This API call increments the download counter
       const response = await api.post(`/papers/${paper._id}/download`)
       
       if (response.data?.success) {
@@ -85,7 +84,6 @@ function PaperDetail() {
         link.click()
         document.body.removeChild(link)
         
-        // Update local state with new download count
         setPaper(prev => prev ? {
           ...prev,
           downloadCount: downloadCount
@@ -105,6 +103,8 @@ function PaperDetail() {
     if (paper?.fileUrl) {
       setShowPreview(true)
       setPreviewLoading(true)
+      // Prevent body scroll when modal opens
+      document.body.style.overflow = 'hidden'
       toast.info('Loading preview...')
     } else {
       toast.error('Preview not available')
@@ -114,10 +114,11 @@ function PaperDetail() {
   const closePreview = () => {
     setShowPreview(false)
     setPreviewLoading(true)
+    // Restore body scroll when modal closes
+    document.body.style.overflow = 'unset'
   }
 
   const handleDownloadFromPreview = async () => {
-    // Close preview and trigger download (which counts)
     closePreview()
     await handleDownload()
   }
@@ -141,16 +142,21 @@ function PaperDetail() {
     }
   }
 
-  // PDF.js Viewer URL (Mozilla's hosted version)
   const getPdfJsViewerUrl = () => {
     if (!paper?.fileUrl) return ''
-    // Use Mozilla's hosted PDF.js viewer
     return `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(paper.fileUrl)}`
   }
 
   useEffect(() => {
     fetchPaperDetails()
   }, [paperId])
+
+  // Cleanup effect for body scroll
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [])
 
   if (loading) {
     return (
@@ -269,7 +275,6 @@ function PaperDetail() {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Preview Button - Opens Modal with PDF.js (NO counter increment) */}
             <button
               onClick={handlePreview}
               className="btn-md btn-secondary flex items-center justify-center space-x-2"
@@ -278,7 +283,6 @@ function PaperDetail() {
               <span>Preview PDF</span>
             </button>
 
-            {/* Download Button - Increments counter via API */}
             <button
               onClick={handleDownload}
               disabled={downloading}
@@ -308,63 +312,89 @@ function PaperDetail() {
         </div>
       </div>
 
-      {/* PDF Preview Modal - PDF.js Viewer */}
+      {/* IMPROVED PDF Preview Modal */}
       {showPreview && paper?.fileUrl && (
         <div 
-          className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-2 sm:p-4"
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          className="fixed inset-0 bg-black/95 z-[9999] flex items-start justify-center overflow-y-auto"
+          style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0,
+            padding: '1rem'
+          }}
           onClick={closePreview}
         >
           <div 
-            className="relative bg-slate-900 rounded-xl w-full max-w-[95vw] h-[95vh] flex flex-col shadow-2xl mx-auto"
+            className="relative bg-slate-900 rounded-xl w-full shadow-2xl my-4"
+            style={{
+              maxWidth: 'min(1400px, 95vw)',
+              minHeight: 'min(900px, calc(100vh - 2rem))',
+              height: 'auto'
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between p-3 sm:p-4 border-b border-slate-700 bg-slate-800 rounded-t-xl flex-shrink-0">
-              <div className="flex items-center space-x-3 flex-1 min-w-0">
-                <PictureAsPdf className="text-red-400 flex-shrink-0" />
-                <h3 className="text-sm sm:text-lg font-semibold text-white truncate">
+            {/* Compact Header - Fixed */}
+            <div className="sticky top-0 z-10 flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border-b border-slate-700 bg-slate-800/95 backdrop-blur-sm rounded-t-xl">
+              <div className="flex items-center space-x-2 sm:space-x-3 flex-1 min-w-0">
+                <PictureAsPdf className="text-red-400 text-lg sm:text-xl flex-shrink-0" />
+                <h3 className="text-xs sm:text-sm md:text-base font-semibold text-white truncate">
                   {paper.title}
                 </h3>
               </div>
-              <div className="flex items-center space-x-2 flex-shrink-0">
+              <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0 ml-2">
                 <button
                   onClick={handleDownloadFromPreview}
                   disabled={downloading}
-                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-2 sm:px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50"
+                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50"
+                  title="Download PDF"
                 >
                   <Download fontSize="small" />
                   <span className="hidden sm:inline">Download</span>
                 </button>
                 <button
                   onClick={closePreview}
-                  className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-700"
+                  className="text-slate-400 hover:text-white transition-colors p-1.5 sm:p-2 rounded-lg hover:bg-slate-700"
                   aria-label="Close preview"
+                  title="Close preview"
                 >
-                  <Close />
+                  <Close fontSize="small" />
                 </button>
               </div>
             </div>
             
-            {/* PDF Viewer - PDF.js iframe */}
-            <div className="flex-1 bg-slate-800 p-2 rounded-b-xl overflow-hidden relative">
+            {/* PDF Viewer Container - Responsive Height */}
+            <div 
+              className="relative bg-slate-800 rounded-b-xl overflow-hidden"
+              style={{
+                height: 'calc(100vh - 6rem)',
+                minHeight: '500px',
+                maxHeight: '900px'
+              }}
+            >
               {previewLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 z-10">
                   <div className="flex flex-col items-center space-y-4">
-                    <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
-                    <p className="text-slate-400">Loading PDF preview...</p>
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
+                    <p className="text-slate-400 text-sm sm:text-base">Loading PDF preview...</p>
                   </div>
                 </div>
               )}
               <iframe
                 src={getPdfJsViewerUrl()}
-                className="w-full h-full border-0 rounded-lg bg-white"
+                className="w-full h-full border-0 rounded-b-xl"
                 title="PDF Preview"
                 allow="fullscreen"
-                onLoad={() => setPreviewLoading(false)}
-                onError={() => {
+                loading="lazy"
+                onLoad={() => {
                   setPreviewLoading(false)
-                  toast.error('Failed to load preview')
+                  console.log('PDF loaded successfully')
+                }}
+                onError={(e) => {
+                  console.error('PDF load error:', e)
+                  setPreviewLoading(false)
+                  toast.error('Failed to load preview. Try downloading instead.')
                 }}
               />
             </div>
