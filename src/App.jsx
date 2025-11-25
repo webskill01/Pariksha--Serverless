@@ -24,6 +24,7 @@ import Privacy from "./pages/Privacy"
 import FAQ from "./pages/Faqs"
 import Terms from "./pages/Terms"
 import ScrollToTop from "./utils/ScrollToTop"
+import PaperPreview from "./pages/papers/PaperPreview"
 
 const App = () => {
   return (
@@ -43,6 +44,7 @@ const App = () => {
               <Route path="/upload" element={<UploadPaper/>}/>
               <Route path="/papers" element={<BrowsePapers/>}/>
               <Route path="/papers/:id" element={<PaperDetail/>}/>
+              <Route path="/papers/:id/preview" element={<PaperPreview />} />
               <Route path="/admin/*" element={
                 <AdminRoute>
                 <Routes>

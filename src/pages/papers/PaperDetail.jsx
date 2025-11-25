@@ -1,4 +1,4 @@
-// src/pages/papers/PaperDetail.jsx - Google Docs Viewer Only (Final Version)
+// src/pages/papers/PaperDetail.jsx - New Window Preview with Google Docs Viewer
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -10,7 +10,6 @@ import {
   Tag as TagIcon,
   ArrowForward,
   Visibility,
-  Close,
   OpenInNew
 } from '@mui/icons-material'
 
@@ -24,7 +23,6 @@ function PaperDetail() {
   const [paper, setPaper] = useState(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
 
   const { id: paperId } = useParams()
   const navigate = useNavigate()
@@ -100,14 +98,13 @@ function PaperDetail() {
 
   const handlePreview = () => {
     if (paper?.fileUrl) {
-      setShowPreview(true)
+      // Open preview in new window with specific route
+      const previewUrl = `/papers/${paperId}/preview`
+      window.open(previewUrl, '_blank', 'width=1200,height=800,menubar=no,toolbar=no,location=no')
+      toast.info('Opening preview in new window...')
     } else {
       toast.error('Preview not available')
     }
-  }
-
-  const closePreview = () => {
-    setShowPreview(false)
   }
 
   const handleShare = async () => {
@@ -168,12 +165,6 @@ function PaperDetail() {
     { label: paper.subject || 'Subject' },
     { label: paper.title || 'Paper' }
   ]
-
-  // Google Docs Viewer URL (Primary and only viewer)
-  const getPreviewUrl = () => {
-    if (!paper?.fileUrl) return ''
-    return `https://docs.google.com/viewer?url=${encodeURIComponent(paper.fileUrl)}&embedded=true`
-  }
 
   return (
     <div className="container-custom px-3 py-4 sm:px-6 sm:py-8">
@@ -256,11 +247,12 @@ function PaperDetail() {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Preview Button - Opens in New Window */}
             <button
               onClick={handlePreview}
               className="btn-md btn-secondary flex items-center justify-center space-x-2"
             >
-              <Visibility fontSize="small" />
+              <OpenInNew fontSize="small" />
               <span>Preview PDF</span>
             </button>
 
@@ -292,69 +284,6 @@ function PaperDetail() {
           </div>
         </div>
       </div>
-
-      {/* PDF Preview Modal - Google Docs Viewer Only */}
-      {showPreview && paper?.fileUrl && (
-        <div 
-          className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-2 sm:p-4"
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
-          onClick={closePreview}
-        >
-          <div 
-            className="relative bg-slate-900 rounded-xl w-full max-w-[95vw] h-[95vh] flex flex-col shadow-2xl mx-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between p-3 sm:p-4 border-b border-slate-700 bg-slate-800 rounded-t-xl flex-shrink-0">
-              <div className="flex items-center space-x-3 flex-1 min-w-0">
-                <PictureAsPdf className="text-red-400 flex-shrink-0" />
-                <h3 className="text-sm sm:text-lg font-semibold text-white truncate">
-                  {paper.title}
-                </h3>
-              </div>
-              <div className="flex items-center space-x-2 flex-shrink-0">
-                <a
-                  href={paper.fileUrl}
-                  download
-                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-2 sm:px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Download fontSize="small" />
-                  <span className="hidden sm:inline">Download</span>
-                </a>
-                <a
-                  href={paper.fileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-2 sm:px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <OpenInNew fontSize="small" />
-                  <span className="hidden sm:inline">Open</span>
-                </a>
-                <button
-                  onClick={closePreview}
-                  className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-700"
-                  aria-label="Close preview"
-                >
-                  <Close />
-                </button>
-              </div>
-            </div>
-            
-            {/* PDF Viewer - Google Docs Viewer */}
-            <div className="flex-1 bg-slate-800 p-2 rounded-b-xl overflow-hidden">
-              <iframe
-                src={getPreviewUrl()}
-                className="w-full h-full border-0 rounded-lg bg-white"
-                title="PDF Preview"
-                allow="fullscreen"
-                loading="lazy"
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Quick Stats Card */}
       <div className="mt-4 sm:mt-6">
