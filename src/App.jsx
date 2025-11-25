@@ -24,7 +24,6 @@ import Privacy from "./pages/Privacy"
 import FAQ from "./pages/Faqs"
 import Terms from "./pages/Terms"
 import ScrollToTop from "./utils/ScrollToTop"
-import PaperPreview from "./pages/papers/PaperPreview"
 
 const App = () => {
   return (
@@ -35,42 +34,40 @@ const App = () => {
           <div className=" min-h-screen gradient-bg flex flex-col">
             <Header/>
             <main className="flex-1 ">
-        <ScrollToTop/>
-            <Routes>
-              <Route path="/" element={<Home/>}/>
-              <Route path="/auth/login" element={<Login/>}/>
-              <Route path="/auth/register" element={<Register/>}/>
-              <Route path="/dashboard" element={<Dashboard/>}/>
-              <Route path="/upload" element={<UploadPaper/>}/>
-              <Route path="/papers" element={<BrowsePapers/>}/>
-              <Route path="/papers/:id" element={<PaperDetail/>}/>
-              <Route path="/papers/:id/preview" element={<PaperPreview />} />
-              <Route path="/admin/*" element={
-                <AdminRoute>
-                <Routes>
-                  <Route index element={<AdminDashboard />} />
-                  <Route path="dashboard" element={<AdminDashboard />} />
-                  {/* Add more admin routes here later */}
-                </Routes>
-              </AdminRoute>
-            } />
-            <Route path="/about" element={<About/>}/>
-            <Route path="/privacy" element={<Privacy/>}/>
-            <Route path="/terms" element={<Terms/>}/>
-            <Route path="/faq" element={<FAQ/>}/>
-            </Routes>
+              <ScrollToTop/>
+              <Routes>
+                <Route path="/" element={<Home/>}/>
+                <Route path="/auth/login" element={<Login/>}/>
+                <Route path="/auth/register" element={<Register/>}/>
+                <Route path="/dashboard" element={<Dashboard/>}/>
+                <Route path="/upload" element={<UploadPaper/>}/>
+                <Route path="/papers" element={<BrowsePapers/>}/>
+                <Route path="/papers/:id" element={<PaperDetail/>}/>
+                {/* Removed preview route - no longer needed */}
+                <Route path="/admin/*" element={
+                  <AdminRoute>
+                    <Routes>
+                      <Route index element={<AdminDashboard />} />
+                      <Route path="dashboard" element={<AdminDashboard />} />
+                    </Routes>
+                  </AdminRoute>
+                } />
+                <Route path="/about" element={<About/>}/>
+                <Route path="/privacy" element={<Privacy/>}/>
+                <Route path="/terms" element={<Terms/>}/>
+                <Route path="/faq" element={<FAQ/>}/>
+              </Routes>
             </main>
             <Footer/>
-             {/* Toast Notifications Container */}
-          <ToastContainer
-            position="top-right"
-            autoClose={3000}
-            hideProgressBar={false}
-            newestOnTop
-            closeOnClick
-            draggable
-            theme="dark"
-          />
+            <ToastContainer
+              position="top-right"
+              autoClose={3000}
+              hideProgressBar={false}
+              newestOnTop
+              closeOnClick
+              draggable
+              theme="dark"
+            />
           </div>
         </Router>
       </ThemeProvider>

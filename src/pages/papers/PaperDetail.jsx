@@ -1,4 +1,4 @@
-// src/pages/papers/PaperDetail.jsx - New Window Preview with Google Docs Viewer
+// src/pages/papers/PaperDetail.jsx - Direct Google Docs Viewer in New Window
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -9,8 +9,7 @@ import {
   Share,
   Tag as TagIcon,
   ArrowForward,
-  Visibility,
-  OpenInNew
+  Visibility
 } from '@mui/icons-material'
 
 import { paperService } from '../../services/paperService'
@@ -68,6 +67,7 @@ function PaperDetail() {
 
     setDownloading(true)
     try {
+      // This API call increments the download counter
       const response = await api.post(`/papers/${paper._id}/download`)
       
       if (response.data?.success) {
@@ -81,6 +81,7 @@ function PaperDetail() {
         link.click()
         document.body.removeChild(link)
         
+        // Update local state with new download count
         setPaper(prev => prev ? {
           ...prev,
           downloadCount: downloadCount
@@ -98,10 +99,18 @@ function PaperDetail() {
 
   const handlePreview = () => {
     if (paper?.fileUrl) {
-      // Open preview in new window with specific route
-      const previewUrl = `/papers/${paperId}/preview`
-      window.open(previewUrl, '_blank', 'width=1200,height=800,menubar=no,toolbar=no,location=no')
-      toast.info('Opening preview in new window...')
+      // Open Google Docs Viewer directly in new window
+      // This does NOT increment download counter
+      const googleDocsViewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(paper.fileUrl)}&embedded=false`
+      
+      // Open in new window/tab
+      const previewWindow = window.open(googleDocsViewerUrl, '_blank', 'width=1200,height=800')
+      
+      if (previewWindow) {
+        toast.info('Opening preview in new window...')
+      } else {
+        toast.error('Please allow pop-ups to view preview')
+      }
     } else {
       toast.error('Preview not available')
     }
@@ -247,15 +256,16 @@ function PaperDetail() {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Preview Button - Opens in New Window */}
+            {/* Preview Button - Opens Google Docs Viewer in New Window (NO counter increment) */}
             <button
               onClick={handlePreview}
               className="btn-md btn-secondary flex items-center justify-center space-x-2"
             >
-              <OpenInNew fontSize="small" />
+              <Visibility fontSize="small" />
               <span>Preview PDF</span>
             </button>
 
+            {/* Download Button - Increments counter via API */}
             <button
               onClick={handleDownload}
               disabled={downloading}
