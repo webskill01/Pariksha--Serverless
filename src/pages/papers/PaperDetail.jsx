@@ -1,4 +1,4 @@
-// src/pages/papers/PaperDetail.jsx - Direct Google Docs Viewer in New Window
+// src/pages/papers/PaperDetail.jsx - PDF.js Viewer with Download Tracking
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -9,7 +9,8 @@ import {
   Share,
   Tag as TagIcon,
   ArrowForward,
-  Visibility
+  Visibility,
+  Close
 } from '@mui/icons-material'
 
 import { paperService } from '../../services/paperService'
@@ -22,6 +23,8 @@ function PaperDetail() {
   const [paper, setPaper] = useState(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(true)
 
   const { id: paperId } = useParams()
   const navigate = useNavigate()
@@ -77,6 +80,7 @@ function PaperDetail() {
         const link = document.createElement('a')
         link.href = fileUrl
         link.download = cleanFilename
+        link.target = '_blank'
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
@@ -99,21 +103,23 @@ function PaperDetail() {
 
   const handlePreview = () => {
     if (paper?.fileUrl) {
-      // Open Google Docs Viewer directly in new window
-      // This does NOT increment download counter
-      const googleDocsViewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(paper.fileUrl)}&embedded=false`
-      
-      // Open in new window/tab
-      const previewWindow = window.open(googleDocsViewerUrl, '_blank', 'width=1200,height=800')
-      
-      if (previewWindow) {
-        toast.info('Opening preview in new window...')
-      } else {
-        toast.error('Please allow pop-ups to view preview')
-      }
+      setShowPreview(true)
+      setPreviewLoading(true)
+      toast.info('Loading preview...')
     } else {
       toast.error('Preview not available')
     }
+  }
+
+  const closePreview = () => {
+    setShowPreview(false)
+    setPreviewLoading(true)
+  }
+
+  const handleDownloadFromPreview = async () => {
+    // Close preview and trigger download (which counts)
+    closePreview()
+    await handleDownload()
   }
 
   const handleShare = async () => {
@@ -133,6 +139,13 @@ function PaperDetail() {
     } catch (error) {
       console.error('Share failed:', error)
     }
+  }
+
+  // PDF.js Viewer URL (Mozilla's hosted version)
+  const getPdfJsViewerUrl = () => {
+    if (!paper?.fileUrl) return ''
+    // Use Mozilla's hosted PDF.js viewer
+    return `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(paper.fileUrl)}`
   }
 
   useEffect(() => {
@@ -256,7 +269,7 @@ function PaperDetail() {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Preview Button - Opens Google Docs Viewer in New Window (NO counter increment) */}
+            {/* Preview Button - Opens Modal with PDF.js (NO counter increment) */}
             <button
               onClick={handlePreview}
               className="btn-md btn-secondary flex items-center justify-center space-x-2"
@@ -294,6 +307,70 @@ function PaperDetail() {
           </div>
         </div>
       </div>
+
+      {/* PDF Preview Modal - PDF.js Viewer */}
+      {showPreview && paper?.fileUrl && (
+        <div 
+          className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-2 sm:p-4"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          onClick={closePreview}
+        >
+          <div 
+            className="relative bg-slate-900 rounded-xl w-full max-w-[95vw] h-[95vh] flex flex-col shadow-2xl mx-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-3 sm:p-4 border-b border-slate-700 bg-slate-800 rounded-t-xl flex-shrink-0">
+              <div className="flex items-center space-x-3 flex-1 min-w-0">
+                <PictureAsPdf className="text-red-400 flex-shrink-0" />
+                <h3 className="text-sm sm:text-lg font-semibold text-white truncate">
+                  {paper.title}
+                </h3>
+              </div>
+              <div className="flex items-center space-x-2 flex-shrink-0">
+                <button
+                  onClick={handleDownloadFromPreview}
+                  disabled={downloading}
+                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-2 sm:px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50"
+                >
+                  <Download fontSize="small" />
+                  <span className="hidden sm:inline">Download</span>
+                </button>
+                <button
+                  onClick={closePreview}
+                  className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-700"
+                  aria-label="Close preview"
+                >
+                  <Close />
+                </button>
+              </div>
+            </div>
+            
+            {/* PDF Viewer - PDF.js iframe */}
+            <div className="flex-1 bg-slate-800 p-2 rounded-b-xl overflow-hidden relative">
+              {previewLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
+                    <p className="text-slate-400">Loading PDF preview...</p>
+                  </div>
+                </div>
+              )}
+              <iframe
+                src={getPdfJsViewerUrl()}
+                className="w-full h-full border-0 rounded-lg bg-white"
+                title="PDF Preview"
+                allow="fullscreen"
+                onLoad={() => setPreviewLoading(false)}
+                onError={() => {
+                  setPreviewLoading(false)
+                  toast.error('Failed to load preview')
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Stats Card */}
       <div className="mt-4 sm:mt-6">
