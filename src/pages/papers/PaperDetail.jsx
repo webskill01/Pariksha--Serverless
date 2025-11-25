@@ -1,4 +1,4 @@
-// src/pages/papers/PaperDetail.jsx - With Google Docs Viewer Fallback
+// src/pages/papers/PaperDetail.jsx - Google Docs Viewer Only (Final Version)
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -25,7 +25,6 @@ function PaperDetail() {
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
-  const [useGoogleViewer, setUseGoogleViewer] = useState(false)
 
   const { id: paperId } = useParams()
   const navigate = useNavigate()
@@ -102,7 +101,6 @@ function PaperDetail() {
   const handlePreview = () => {
     if (paper?.fileUrl) {
       setShowPreview(true)
-      setUseGoogleViewer(false)
     } else {
       toast.error('Preview not available')
     }
@@ -110,7 +108,6 @@ function PaperDetail() {
 
   const closePreview = () => {
     setShowPreview(false)
-    setUseGoogleViewer(false)
   }
 
   const handleShare = async () => {
@@ -172,17 +169,10 @@ function PaperDetail() {
     { label: paper.title || 'Paper' }
   ]
 
-  // Generate preview URL
+  // Google Docs Viewer URL (Primary and only viewer)
   const getPreviewUrl = () => {
     if (!paper?.fileUrl) return ''
-    
-    if (useGoogleViewer) {
-      // Use Google Docs Viewer as fallback
-      return `https://docs.google.com/viewer?url=${encodeURIComponent(paper.fileUrl)}&embedded=true`
-    } else {
-      // Try direct URL first
-      return `${paper.fileUrl}#toolbar=0&navpanes=0&scrollbar=1`
-    }
+    return `https://docs.google.com/viewer?url=${encodeURIComponent(paper.fileUrl)}&embedded=true`
   }
 
   return (
@@ -303,63 +293,70 @@ function PaperDetail() {
         </div>
       </div>
 
-      {/* PDF Preview Modal with Fallback */}
+      {/* PDF Preview Modal - Google Docs Viewer Only */}
       {showPreview && paper?.fileUrl && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-2 sm:p-4"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={closePreview}
         >
           <div 
-            className="bg-slate-900 rounded-lg w-full h-full max-w-7xl max-h-[95vh] flex flex-col shadow-2xl"
+            className="relative bg-slate-900 rounded-xl w-full max-w-[95vw] h-[95vh] flex flex-col shadow-2xl mx-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex justify-between items-center p-4 border-b border-slate-700 bg-slate-800 flex-shrink-0">
-              <h3 className="text-lg font-semibold text-white truncate pr-4">
-                PDF Preview: {paper.title}
-              </h3>
-              <div className="flex items-center space-x-2">
-                {!useGoogleViewer && (
-                  <button
-                    onClick={() => setUseGoogleViewer(true)}
-                    className="text-yellow-400 hover:text-yellow-300 text-sm px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
-                  >
-                    Use Google Viewer
-                  </button>
-                )}
+            <div className="flex items-center justify-between p-3 sm:p-4 border-b border-slate-700 bg-slate-800 rounded-t-xl flex-shrink-0">
+              <div className="flex items-center space-x-3 flex-1 min-w-0">
+                <PictureAsPdf className="text-red-400 flex-shrink-0" />
+                <h3 className="text-sm sm:text-lg font-semibold text-white truncate">
+                  {paper.title}
+                </h3>
+              </div>
+              <div className="flex items-center space-x-2 flex-shrink-0">
+                <a
+                  href={paper.fileUrl}
+                  download
+                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-2 sm:px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Download fontSize="small" />
+                  <span className="hidden sm:inline">Download</span>
+                </a>
                 <a
                   href={paper.fileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-cyan-400 hover:text-cyan-300 text-sm flex items-center space-x-1 px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
+                  className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-2 sm:px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <OpenInNew fontSize="small" />
-                  <span>New Tab</span>
+                  <span className="hidden sm:inline">Open</span>
                 </a>
                 <button
                   onClick={closePreview}
                   className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-700"
+                  aria-label="Close preview"
                 >
                   <Close />
                 </button>
               </div>
             </div>
             
-            {/* PDF Viewer */}
-            <div className="flex-1 bg-slate-800 p-2 overflow-hidden">
+            {/* PDF Viewer - Google Docs Viewer */}
+            <div className="flex-1 bg-slate-800 p-2 rounded-b-xl overflow-hidden">
               <iframe
-                key={useGoogleViewer ? 'google' : 'direct'}
                 src={getPreviewUrl()}
-                className="w-full h-full border-0 rounded"
+                className="w-full h-full border-0 rounded-lg bg-white"
                 title="PDF Preview"
                 allow="fullscreen"
+                loading="lazy"
               />
             </div>
           </div>
         </div>
       )}
 
-      {/* Quick Stats and Navigation (same as before) */}
+      {/* Quick Stats Card */}
       <div className="mt-4 sm:mt-6">
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">
@@ -382,6 +379,7 @@ function PaperDetail() {
         </div>
       </div>
 
+      {/* Quick Navigation Links */}
       <div className="mt-4 sm:mt-6">
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">
