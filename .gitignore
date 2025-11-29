@@ -9,7 +9,8 @@ pnpm-debug.log*
 dist/
 build/
 .vite/
-.vercel/
+# NOTE: .vercel folder SHOULD be committed for team collaboration
+# Do NOT ignore .vercel folder
 
 # Environment variables
 .env
@@ -44,7 +45,7 @@ pids
 *.seed
 *.pid.lock
 
-# Coverage directory used by tools like istanbul
+# Coverage directory
 coverage/
 *.lcov
 
@@ -72,7 +73,7 @@ jspm_packages/
 # dotenv environment variables file
 .env.test
 
-# parcel-bundler cache (https://parceljs.org/)
+# parcel-bundler cache
 .cache
 .parcel-cache
 
@@ -118,7 +119,7 @@ temp/
 # TernJS port file
 .tern-port
 
-# Stores VSCode versions used for testing VSCode extensions
+# Stores VSCode versions
 .vscode-test
 
 # Microbundle cache
@@ -130,13 +131,7 @@ temp/
 # Optional stylelint cache
 .stylelintcache
 
-# Microbundle cache
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
-
-# GSAP BusinessGreen (included in business packages)
+# GSAP BusinessGreen
 /public/gsap/
 
 # Firebase
@@ -144,7 +139,7 @@ temp/
 firebase-debug.log
 firestore-debug.log
 
-# Backend uploads folder (if exists)
+# Backend uploads folder
 uploads/
 
 # Package-lock backups

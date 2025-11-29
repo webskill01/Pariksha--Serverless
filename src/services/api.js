@@ -1,10 +1,10 @@
 import axios from "axios";
 
-// Correct base URL configuration
+// Simplified base URL configuration
+// In dev: Vite proxy handles /api → http://localhost:3001/api
+// In prod: /api goes to same domain (Vercel serverless)
 const api = axios.create({
-  baseURL: import.meta.env.PROD 
-    ? '/api'  // Production: use relative path (same domain)
-    : import.meta.env.VITE_API_URL || 'http://localhost:3000/api', // Development
+  baseURL: '/api', // Always use /api - proxy handles routing
   headers: {
     "Content-Type": "application/json",
   },
@@ -18,8 +18,10 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Debug logging (remove in production if desired)
-    console.log('🔹 API Request:', config.method?.toUpperCase(), config.url);
+    // Debug logging in development only
+    if (import.meta.env.DEV) {
+      console.log('🔹 API Request:', config.method?.toUpperCase(), config.baseURL + config.url);
+    }
     
     return config;
   },
@@ -31,7 +33,9 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => {
-    console.log('✅ API Response:', response.config.url, response.status);
+    if (import.meta.env.DEV) {
+      console.log('✅ API Response:', response.config.url, response.status);
+    }
     return response;
   },
   (error) => {
