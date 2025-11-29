@@ -1,4 +1,4 @@
-// Frontend/src/pages/papers/BrowsePapers.jsx - Fixed & Mobile-Optimized
+// src/pages/papers/BrowsePapers.jsx - With Pagination & Enhanced Search
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -21,6 +21,10 @@ function BrowsePapers() {
   const [sortBy, setSortBy] = useState('newest')
   const [showFilters, setShowFilters] = useState(false)
   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [papersPerPage] = useState(10) // 10 papers per page
+  
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('')
   const [filters, setFilters] = useState({
@@ -41,7 +45,8 @@ function BrowsePapers() {
       class: searchParams.get('class') || '',
       semester: searchParams.get('semester') || '',
       examType: searchParams.get('examType') || '',
-      year: searchParams.get('year') || ''
+      year: searchParams.get('year') || '',
+      page: searchParams.get('page') || '1'
     }
     
     setSearchQuery(urlFilters.search)
@@ -52,17 +57,66 @@ function BrowsePapers() {
       examType: urlFilters.examType,
       year: urlFilters.year
     })
+    setCurrentPage(parseInt(urlFilters.page) || 1)
     
     return urlFilters
   }
 
-  // ✅ FIXED: Fetch papers with proper filtering and sorting
+  // ✅ ENHANCED: Normalize text for flexible searching (removes dots, special chars)
+  const normalizeText = (text) => {
+    if (!text) return ''
+    return text
+      .toLowerCase()
+      .replace(/[.\-_\s]/g, '') // Remove dots, hyphens, underscores, spaces
+      .trim()
+  }
+
+  // ✅ ENHANCED: Client-side filtering with regex-like matching
+  const filterPapersClientSide = (allPapers) => {
+    let filtered = allPapers
+
+    // Search query filter
+    if (searchQuery.trim()) {
+      const normalizedQuery = normalizeText(searchQuery)
+      filtered = filtered.filter(paper => {
+        const titleMatch = normalizeText(paper.title || '').includes(normalizedQuery)
+        const subjectMatch = normalizeText(paper.subject || '').includes(normalizedQuery)
+        const classMatch = normalizeText(paper.class || '').includes(normalizedQuery)
+        return titleMatch || subjectMatch || classMatch
+      })
+    }
+
+    // Status filters
+    if (filters.subject) {
+      filtered = filtered.filter(paper => 
+        normalizeText(paper.subject).includes(normalizeText(filters.subject))
+      )
+    }
+    if (filters.class) {
+      filtered = filtered.filter(paper => 
+        normalizeText(paper.class).includes(normalizeText(filters.class))
+      )
+    }
+    if (filters.semester) {
+      filtered = filtered.filter(paper => paper.semester === filters.semester)
+    }
+    if (filters.examType) {
+      filtered = filtered.filter(paper => paper.examType === filters.examType)
+    }
+    if (filters.year) {
+      filtered = filtered.filter(paper => paper.year === filters.year)
+    }
+
+    return filtered
+  }
+
+  // Fetch papers
   const fetchPapers = async (filterParams = {}) => {
     setLoading(true)
     try {
       const response = await paperService.getBrowsePapers(filterParams)
-      // Handle response structure
       let papersData = []
+      
       if (response?.data?.papers) {
         papersData = response.data.papers
       } else if (response?.papers) {
@@ -72,6 +126,7 @@ function BrowsePapers() {
       } else if (Array.isArray(response)) {
         papersData = response
       }
+      
       setPapers(Array.isArray(papersData) ? papersData : [])
     } catch (error) {
       console.error('Failed to fetch papers:', error)
@@ -102,18 +157,20 @@ function BrowsePapers() {
     const allFilters = {
       search: searchQuery.trim(),
       ...filters,
-      sortBy: sortBy
+      sortBy: sortBy,
+      page: currentPage.toString()
     }
 
     // Remove empty filters
     const cleanFilters = Object.fromEntries(
       Object.entries(allFilters).filter(([_, value]) => value && value !== '')
     )
+    
     // Update URL
     setSearchParams(cleanFilters)
     
-    // Fetch papers
-    fetchPapers(cleanFilters)
+    // Fetch papers (server will handle initial filtering)
+    fetchPapers({ sortBy })
   }
 
   // Handle filter changes
@@ -122,12 +179,13 @@ function BrowsePapers() {
       ...prev,
       [filterName]: value
     }))
+    setCurrentPage(1) // Reset to first page
   }
 
   // Handle sort change
   const handleSortChange = (newSort) => {
     setSortBy(newSort)
-    // Trigger filter application with new sort
+    setCurrentPage(1) // Reset to first page
     setTimeout(() => {
       applyFilters()
     }, 100)
@@ -144,15 +202,17 @@ function BrowsePapers() {
       year: ''
     })
     setSortBy('newest')
+    setCurrentPage(1)
     setSearchParams({})
     fetchPapers({ sortBy: 'newest' })
   }
 
-  // Debounced search effect
+  // ✅ IMPROVED: Reduced debounce to 300ms
   useEffect(() => {
     const timeoutId = setTimeout(() => {
+      setCurrentPage(1) // Reset page on search
       applyFilters()
-    }, 500) // 500ms delay for search
+    }, 300) // Reduced from 500ms to 300ms
 
     return () => clearTimeout(timeoutId)
   }, [searchQuery, filters, sortBy])
@@ -167,34 +227,50 @@ function BrowsePapers() {
   // Check if any filters are active
   const hasActiveFilters = searchQuery || Object.values(filters).some(value => value) || sortBy !== 'newest'
 
+  // ✅ PAGINATION LOGIC
+  const filteredPapers = filterPapersClientSide(papers)
+  const indexOfLastPaper = currentPage * papersPerPage
+  const indexOfFirstPaper = indexOfLastPaper - papersPerPage
+  const currentPapers = filteredPapers.slice(indexOfFirstPaper, indexOfLastPaper)
+  const totalPages = Math.ceil(filteredPapers.length / papersPerPage)
+
+  const paginate = (pageNumber) => {
+    setCurrentPage(pageNumber)
+    setSearchParams(prev => {
+      const params = Object.fromEntries(prev.entries())
+      return { ...params, page: pageNumber.toString() }
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   return (
-    <div className="container-custom py-4 sm:py-8">
+    <div className="container-custom px-3 py-4 sm:px-6 sm:py-8">
       
       {/* Compact Header */}
-      <div className="text-center mb-6">
-        <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-3">
-          <LibraryBooks className="text-white text-xl" />
+      <div className="text-center mb-4 sm:mb-6">
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3">
+          <LibraryBooks className="text-white text-lg sm:text-xl" />
         </div>
-        <h1 className="text-2xl sm:text-3xl font-bold gradient-text mb-2">Browse Papers</h1>
-        <p className="text-slate-400 text-sm">Discover question papers shared by students</p>
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold gradient-text mb-1 sm:mb-2">Browse Papers</h1>
+        <p className="text-slate-400 text-xs sm:text-sm">Discover question papers shared by students</p>
       </div>
 
       {/* Mobile-Optimized Search & Filters */}
-      <div className="card glass-strong mb-4">
-        <div className="p-4">
+      <div className="card glass-strong mb-3 sm:mb-4">
+        <div className="p-3 sm:p-4">
           {/* Search Bar */}
-          <div className="relative mb-4">
+          <div className="relative mb-3 sm:mb-4">
             <input
               type="text"
-              placeholder="Search papers by title, subject..."
+              placeholder="Search by title, subject, class (e.g., bcom, btech)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-4 pr-10 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              className="w-full pl-3 sm:pl-4 pr-10 py-2 sm:py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-300"
+                className="absolute right-2 sm:right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-300"
               >
                 <Clear fontSize="small" />
               </button>
@@ -202,21 +278,21 @@ function BrowsePapers() {
           </div>
 
           {/* Filter Controls */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`btn-sm flex items-center space-x-2 ${showFilters ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn-xs sm:btn-sm flex items-center space-x-1 sm:space-x-2 ${showFilters ? 'btn-primary' : 'btn-secondary'}`}
             >
               <FilterList fontSize="small" />
-              <span>Filters</span>
-              {hasActiveFilters && <span className="w-2 h-2 bg-cyan-400 rounded-full"></span>}
+              <span className="text-xs sm:text-sm">Filters</span>
+              {hasActiveFilters && <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-cyan-400 rounded-full"></span>}
             </button>
 
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               {hasActiveFilters && (
-                <button onClick={clearAllFilters} className="btn-xs btn-ghost text-slate-400">
+                <button onClick={clearAllFilters} className="btn-xs btn-ghost text-slate-400 text-xs">
                   <Clear fontSize="small" />
-                  <span>Clear</span>
+                  <span className="hidden sm:inline">Clear</span>
                 </button>
               )}
               
@@ -234,8 +310,8 @@ function BrowsePapers() {
 
           {/* Advanced Filters Panel */}
           {showFilters && (
-            <div className="border-t border-slate-700 pt-4">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="border-t border-slate-700 pt-3 sm:pt-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                 <select
                   value={filters.subject}
                   onChange={(e) => handleFilterChange('subject', e.target.value)}
@@ -297,9 +373,15 @@ function BrowsePapers() {
       </div>
 
       {/* Results Header */}
-      <div className="flex items-center justify-between mb-4 text-sm">
+      <div className="flex items-center justify-between mb-3 sm:mb-4 text-xs sm:text-sm">
         <span className="text-slate-400">
-          {loading ? 'Loading...' : `${papers.length} papers found`}
+          {loading ? 'Loading...' : (
+            <>
+              <span className="inline">
+                Showing {indexOfFirstPaper + 1}-{Math.min(indexOfLastPaper, filteredPapers.length)} of {filteredPapers.length}
+              </span>
+            </>
+          )}
         </span>
         {!loading && (
           <button
@@ -307,34 +389,106 @@ function BrowsePapers() {
             className="text-slate-400 hover:text-slate-300 flex items-center space-x-1"
           >
             <Refresh fontSize="small" />
-            <span>Refresh</span>
+            <span className="hidden sm:inline">Refresh</span>
           </button>
         )}
       </div>
 
       {/* Papers Grid - Mobile-Optimized */}
       {loading ? (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-12 sm:py-16">
           <div className="flex flex-col items-center space-y-3">
-            <div className="w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
-            <p className="text-slate-400 text-sm">Loading papers...</p>
+            <div className="w-8 h-8 sm:w-10 sm:h-10 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
+            <p className="text-slate-400 text-xs sm:text-sm">Loading papers...</p>
           </div>
         </div>
-      ) : papers.length === 0 ? (
-        <div className="text-center py-12">
-          <LibraryBooks className="text-slate-600 text-4xl mb-3 mx-auto" />
-          <h3 className="text-lg font-semibold text-slate-400 mb-2">No papers found</h3>
-          <p className="text-slate-500 mb-4 text-sm">Try adjusting your search criteria</p>
-          <button onClick={clearAllFilters} className="btn-md btn-primary">
+      ) : filteredPapers.length === 0 ? (
+        <div className="text-center py-12 sm:py-16">
+          <LibraryBooks className="text-slate-600 text-3xl sm:text-4xl mb-3 mx-auto" />
+          <h3 className="text-base sm:text-lg font-semibold text-slate-400 mb-2">No papers found</h3>
+          <p className="text-slate-500 mb-4 text-xs sm:text-sm">
+            {searchQuery ? `No results for "${searchQuery}"` : 'Try adjusting your search criteria'}
+          </p>
+          <button onClick={clearAllFilters} className="btn-sm sm:btn-md btn-primary">
             Show All Papers
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-          {papers.map((paper) => (
-            <PaperCard key={paper._id} paper={paper} />
-          ))}
-        </div>
+        <>
+          {/* Papers Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
+            {currentPapers.map((paper) => (
+              <PaperCard key={paper._id} paper={paper} />
+            ))}
+          </div>
+
+          {/* ✅ PAGINATION - Mobile Optimized */}
+          {totalPages > 1 && (
+            <div className="card glass bg-slate-800/30 border border-slate-700/50">
+              <div className="p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  {/* Page Info */}
+                  <div className="text-slate-400 text-xs sm:text-sm order-2 sm:order-1">
+                    Page {currentPage} of {totalPages}
+                  </div>
+                  
+                  {/* Pagination Controls */}
+                  <div className="flex items-center space-x-1 sm:space-x-2 order-1 sm:order-2">
+                    {/* Previous Button */}
+                    <button
+                      onClick={() => paginate(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-slate-700 text-slate-300 rounded hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Prev
+                    </button>
+                    
+                    {/* Page Numbers */}
+                    <div className="flex items-center space-x-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum
+                        if (totalPages <= 5) {
+                          pageNum = i + 1
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i
+                        } else {
+                          pageNum = currentPage - 2 + i
+                        }
+                        
+                        if (pageNum > totalPages || pageNum < 1) return null
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => paginate(pageNum)}
+                            className={`px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm rounded transition-colors ${
+                              currentPage === pageNum
+                                ? 'bg-cyan-500 text-white font-semibold'
+                                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    
+                    {/* Next Button */}
+                    <button
+                      onClick={() => paginate(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-slate-700 text-slate-300 rounded hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

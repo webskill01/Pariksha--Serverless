@@ -2,7 +2,8 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": "vite",
+  "framework": null,
+  "devCommand": null,
   "functions": {
     "api/*.js": {
       "maxDuration": 30,
@@ -21,24 +22,84 @@
   ],
   "rewrites": [
     {
-      "source": "/api/auth/:path*",
+      "source": "/api/auth/login",
       "destination": "/api/auth"
     },
     {
-      "source": "/api/papers/:path*",
+      "source": "/api/auth/register",
+      "destination": "/api/auth"
+    },
+    {
+      "source": "/api/papers/browse",
       "destination": "/api/papers"
     },
     {
-      "source": "/api/admin/:path*",
+      "source": "/api/papers/filters",
+      "destination": "/api/papers"
+    },
+    {
+      "source": "/api/papers/filter-options",
+      "destination": "/api/papers"
+    },
+    {
+      "source": "/api/papers/upload",
+      "destination": "/api/papers"
+    },
+    {
+      "source": "/api/papers/:id",
+      "destination": "/api/papers"
+    },
+    {
+      "source": "/api/papers/:id/download",
+      "destination": "/api/papers"
+    },
+    {
+      "source": "/api/admin/stats",
       "destination": "/api/admin"
     },
     {
-      "source": "/api/user/:path*",
+      "source": "/api/admin/papers",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/api/admin/pending",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/api/admin/papers/:id",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/api/admin/papers/:id/approve",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/api/admin/papers/:id/reject",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/api/admin/papers/:id/preview",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/api/user/dashboard",
       "destination": "/api/user"
     },
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "source": "/api/user/paper/:id",
+      "destination": "/api/user"
+    },
+    {
+      "source": "/api/stats",
+      "destination": "/api/stats"
+    },
+    {
+      "source": "/api/recent",
+      "destination": "/api/recent"
+    },
+    {
+      "source": "/api",
+      "destination": "/api/index"
     },
     {
       "source": "/(.*)",

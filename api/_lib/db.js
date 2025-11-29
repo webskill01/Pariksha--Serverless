@@ -15,32 +15,20 @@ export const connectDB = async () => {
     return connectionPromise;
   }
 
-  // Detect environment
-  const isVercel = process.env.VERCEL === '1';
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isDevelopment = !isVercel && !isProduction;
-
-  // Choose MongoDB URI based on environment
-  let mongoUri;
-  let envLabel;
-
-  if (isDevelopment && process.env.MONGO_URI_LOCAL) {
-    // Local development with local MongoDB
-    mongoUri = process.env.MONGO_URI_LOCAL;
-    envLabel = 'Local MongoDB (Compass)';
-  } else if (process.env.MONGO_URI) {
-    // Production or fallback to Atlas
-    mongoUri = process.env.MONGO_URI;
-    envLabel = isProduction ? 'MongoDB Atlas (Production)' : 'MongoDB Atlas (Dev Fallback)';
-  } else {
-    throw new Error('No MongoDB URI configured. Set MONGO_URI_LOCAL for local dev or MONGO_URI for production.');
+  // Check if MongoDB URI is configured
+  if (!process.env.MONGO_URI) {
+    throw new Error('❌ MONGO_URI environment variable is not set');
   }
+
+  // Detect environment for logging
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+  const envLabel = isProduction ? '☁️ MongoDB Atlas (Production)' : '🔧 MongoDB Atlas (Development)';
 
   console.log(`🔄 Connecting to ${envLabel}...`);
 
-  connectionPromise = mongoose.connect(mongoUri, {
+  connectionPromise = mongoose.connect(process.env.MONGO_URI, {
     bufferCommands: false,
-    maxPoolSize: isDevelopment ? 5 : 10,
+    maxPoolSize: 10,
     serverSelectionTimeoutMS: 15000,
     socketTimeoutMS: 45000,
     connectTimeoutMS: 15000,

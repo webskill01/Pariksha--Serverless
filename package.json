@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "concurrently -n \"VITE,API\" -c \"cyan,green\" \"npm:dev:frontend\" \"npm:dev:backend\"",
     "dev:frontend": "vite",
-    "dev:backend": "vercel dev --listen 3001 --yes",
+    "dev:backend": "node dev-server.js",
+    "dev:vercel": "vercel dev --listen 3001 --yes",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint ."

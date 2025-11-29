@@ -1,54 +1,53 @@
-// Frontend/src/components/papers/PaperCard.jsx - Lightweight Mobile-Optimized
+// src/components/papers/PaperCard.jsx - Fully Clickable & Responsive
 
 import { Link } from 'react-router-dom'
-import { 
-  PictureAsPdf, 
-  VisibilityOutlined
-} from '@mui/icons-material'
+import { PictureAsPdf } from '@mui/icons-material'
 import StatusBadge from '../ui/StatusBadge'
 
 function PaperCard({ paper }) {
   if (!paper) return null
 
   return (
-    <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 rounded-lg p-4 hover:border-slate-600/60 hover:shadow-lg hover:shadow-cyan-500/10 transition-all duration-300 group h-full flex flex-col">
-      
+    <Link
+      to={`/papers/${paper._id}`}
+      className="block bg-gradient-to-br from-slate-800/80 to-slate-900/80 border border-slate-700/50 rounded-lg p-3 sm:p-4 hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/20 hover:scale-[1.02] transition-all duration-300 group h-full"
+    >
       {/* Header with Icon and Status */}
-      <div className="flex items-center justify-center mb-3 gap-[7px] ">
-        <div className="p-2 rounded-lg bg-red-500/20 group-hover:bg-red-500/30 transition-colors duration-300">
-          <PictureAsPdf className="text-red-400 text-lg" />
-        </div>
-        <StatusBadge status={paper.status} />
-      </div>
+<div className="flex items-center justify-between mb-2 sm:mb-3">
+  <div className="p-1 rounded-lg bg-red-500/20 group-hover:bg-red-500/30 transition-colors duration-300">
+    <PictureAsPdf fontSize='medium' className="text-red-400" />
+  </div>
+  <StatusBadge status={paper.status} />
+</div>
+
 
       {/* Paper Title - Main Focus */}
-      <h3 className="text-sm font-bold text-white mb-2 line-clamp-2 leading-tight group-hover:text-cyan-400 transition-colors duration-300">
+      <h3 className="text-[13px] font-bold text-white mb-2 sm:mb-3 line-clamp-2 leading-tight group-hover:text-cyan-400 transition-colors duration-300 min-h-[2.5rem] sm:min-h-[3rem]">
         {paper.title || 'Untitled Paper'}
       </h3>
 
       {/* Essential Details Only */}
-      <div className="space-y-1.5 mb-3 flex-1">
-        <div className="flex items-center justify-between text-xs text-slate-400">
-          <span className="font-medium text-cyan-400">{paper.subject || 'N/A'}</span>
-          <span>{paper.year || 'N/A'}</span>
+      <div className="space-y-1 sm:space-y-1.5">
+        <div className="flex items-center justify-between text-[10px] sm:text-xs text-slate-400">
+          <span className="font-medium text-cyan-400 truncate pr-1">{paper.subject || 'N/A'}</span>
+          <span className="flex-shrink-0">{paper.year || 'N/A'}</span>
         </div>
-        <div className="flex items-center justify-between text-xs text-slate-400">
-          <span>{paper.class || 'N/A'}</span>
-          <span>{paper.examType || 'N/A'}</span>
+        <div className="flex items-center justify-between text-[10px] sm:text-xs text-slate-400">
+          <span className="truncate pr-1">{paper.class || 'N/A'}</span>
+          <span className="flex-shrink-0">{paper.examType || 'N/A'}</span>
         </div>
+          <div className="text-[10px] sm:text-xs text-slate-400 pt-1">
+            {paper.downloadCount} download{paper.downloadCount !== 1 ? 's' : ''}
+          </div>
       </div>
 
-      {/* Single Action Button - Now at Bottom */}
-      <div className="mt-auto">
-        <Link
-          to={`/papers/${paper._id}`}
-          className="w-full bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/40 text-cyan-300 hover:from-cyan-500/30 hover:to-blue-500/30 hover:border-cyan-400/60 hover:text-white rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-300 flex items-center justify-center space-x-1 group/btn"
-        >
-          <VisibilityOutlined fontSize="small" className="group-hover/btn:scale-110 transition-transform duration-300" />
-          <span>View Details</span>
-        </Link>
+      {/* Hover Indicator */}
+      <div className="mt-3 sm:mt-4 pt-2 sm:pt-3 border-t border-slate-700/50 group-hover:border-cyan-500/30 transition-colors duration-300">
+        <div className="text-[10px] sm:text-xs text-slate-500 group-hover:text-cyan-400 font-medium text-center transition-colors duration-300">
+          Click to view details
+        </div>
       </div>
-    </div>
+    </Link>
   )
 }
 
