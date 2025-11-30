@@ -6,7 +6,7 @@ import { validateObjectId, generatePaperFilename } from './_lib/utils.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
   if (req.method === 'OPTIONS') {
@@ -16,6 +16,70 @@ export default async function handler(req, res) {
   try {
     await connectDB();
     const path = req.url.split('?')[0];
+
+    // ========== UPDATE PAPER (PUT) - MUST BE FIRST ==========
+    if (path.match(/^\/api\/papers\/[a-f0-9]{24}$/) && req.method === 'PUT') {
+      // For Express dev server, body is already parsed
+      // For Vercel, we need to parse manually
+      if (!req.body || Object.keys(req.body || {}).length === 0) {
+        const buffers = [];
+        for await (const chunk of req) {
+          buffers.push(chunk);
+        }
+        const data = Buffer.concat(buffers).toString();
+        req.body = JSON.parse(data);
+      }
+
+      await new Promise((resolve, reject) => {
+        auth(req, res, (err) => err ? reject(err) : resolve());
+      });
+
+      const id = path.split('/').pop();
+      
+      if (!validateObjectId(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid paper ID format' });
+      }
+
+      const paper = await Paper.findById(id);
+
+      if (!paper) {
+        return res.status(404).json({ success: false, message: 'Paper not found' });
+      }
+
+      // Check if user is the owner of the paper
+      if (paper.uploadedBy.toString() !== req.userId.toString()) {
+        return res.status(403).json({ success: false, message: 'You can only edit your own papers' });
+      }
+
+      const { title, subject, class: paperClass, semester, year, examType, tags } = req.body;
+
+      // Validate required fields
+      if (!title || !subject || !paperClass || !semester || !year || !examType) {
+        return res.status(400).json({ success: false, message: 'All required fields must be provided' });
+      }
+
+      // Update paper
+      const updatedPaper = await Paper.findByIdAndUpdate(
+        id,
+        {
+          title: title.trim(),
+          subject: subject.trim(),
+          class: paperClass.trim(),
+          semester: semester.trim(),
+          year: year.trim(),
+          examType: examType.trim(),
+          tags: tags || [],
+          updatedAt: new Date()
+        },
+        { new: true, runValidators: true }
+      ).populate('uploadedBy', 'name rollNumber');
+
+      return res.json({
+        success: true,
+        message: 'Paper updated successfully',
+        data: updatedPaper
+      });
+    }
 
     // ========== GET ALL PAPERS (BROWSE) ==========
     if ((path === '/api/papers' || path === '/api/papers/browse') && req.method === 'GET') {
@@ -211,6 +275,50 @@ export default async function handler(req, res) {
         data: { paper }
       });
     }
+    if (path === '/api/papers/contributors' && req.method === 'GET') {
+  const limit = parseInt(req.query.limit) || 10;
+  
+  // Get users with most approved papers
+  const topContributors = await User.find({ uploadCount: { $gt: 0 } })
+    .select('name rollNumber class semester uploadCount createdAt')
+    .sort({ uploadCount: -1, createdAt: 1 })
+    .limit(limit);
+
+  // Get total approved papers for each user
+  const contributorsWithDetails = await Promise.all(
+    topContributors.map(async (user) => {
+      const approvedPapers = await Paper.countDocuments({
+        uploadedBy: user._id,
+        status: 'approved'
+      });
+
+      const totalDownloads = await Paper.aggregate([
+        { $match: { uploadedBy: user._id, status: 'approved' } },
+        { $group: { _id: null, total: { $sum: '$downloadCount' } } }
+      ]);
+
+      return {
+        _id: user._id,
+        name: user.name,
+        rollNumber: user.rollNumber,
+        class: user.class,
+        semester: user.semester,
+        totalUploads: user.uploadCount,
+        approvedPapers: approvedPapers,
+        totalDownloads: totalDownloads[0]?.total || 0,
+        memberSince: user.createdAt
+      };
+    })
+  );
+
+  return res.json({
+    success: true,
+    data: {
+      contributors: contributorsWithDetails,
+      total: contributorsWithDetails.length
+    }
+  });
+}
 
     return res.status(404).json({ success: false, message: 'Route not found' });
 

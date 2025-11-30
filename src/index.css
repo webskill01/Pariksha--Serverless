@@ -508,3 +508,10 @@ input:-webkit-autofill {
   -webkit-text-fill-color: white !important;
   caret-color: white !important;
 }
+/* Force modal to display correctly */
+.modal-container {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  overflow-y: auto !important;
+}

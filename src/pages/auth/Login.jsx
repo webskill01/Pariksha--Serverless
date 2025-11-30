@@ -1,7 +1,7 @@
-// Frontend/src/pages/auth/Login.jsx - Complete corrected version with fixes
+// Frontend/src/pages/auth/Login.jsx - With Google Analytics
 
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { toast } from "react-toastify";
@@ -16,11 +16,18 @@ import {
 
 import { loginSchema } from "../../schemas/authSchemas";
 import { authService } from "../../services/authService";
+import { analytics, trackPageView, setUserId } from "../../utils/analytics"; // ✅ Added analytics
 
 function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // ✅ Track page view when component mounts
+  useEffect(() => {
+    trackPageView(location.pathname);
+  }, [location.pathname]);
 
   // React Hook Form setup with Yup validation
   const {
@@ -42,21 +49,21 @@ function Login() {
   const watchedFields = watch();
 
   useEffect(() => {
-    // Clear roll number error when user starts typing
     if (watchedFields.rollNumber && errors.rollNumber) {
       clearErrors("rollNumber");
     }
   }, [watchedFields.rollNumber, errors.rollNumber, clearErrors]);
 
   useEffect(() => {
-    // Clear password error when user starts typing
     if (watchedFields.password && errors.password) {
       clearErrors("password");
     }
   }, [watchedFields.password, errors.password, clearErrors]);
 
-  // ✅ FIXED: Form submission handler with correct response structure
+  // ✅ Form submission handler with Google Analytics tracking
   const onSubmit = async (data) => {
+    const startTime = Date.now(); // Track login time for performance monitoring
+
     try {
       console.log('🚀 Submitting login form with:', {
         rollNumber: data.rollNumber,
@@ -71,15 +78,32 @@ function Login() {
         userEmail: response?.user?.email
       });
 
-      // ✅ FIXED: Correct response structure handling
       if (response && response.success) {
-        const user = response.user; // ✅ FIXED: response.user, not response.data.user
+        const user = response.user;
         const adminEmails = ["nitinemailss@gmail.com"];
         
         console.log('✅ Login successful for user:', user?.rollNumber);
+
+        // ✅ Track successful login with Google Analytics
+        analytics.userLogin('email');
+        
+        // ✅ Set user ID for tracking (anonymized)
+        if (user?.id || user?._id) {
+          setUserId(user.id || user._id);
+        }
+
+        // ✅ Track login performance timing
+        const loginTime = Date.now() - startTime;
+        if (typeof window.gtag !== 'undefined') {
+          window.gtag('event', 'timing_complete', {
+            name: 'login_duration',
+            value: loginTime,
+            event_category: 'User',
+          });
+        }
+
         toast.success(`Welcome back, ${user.name}!`);
         
-        // ✅ CRITICAL: Small delay ensures localStorage is fully updated before redirect
         setTimeout(() => {
           if (user && adminEmails.includes(user.email)) {
             console.log('🔑 Redirecting admin to admin dashboard');
@@ -88,15 +112,24 @@ function Login() {
             console.log('👤 Redirecting user to dashboard');
             navigate('/dashboard', { replace: true });
           }
-        }, 150); // Slightly increased delay for better reliability
+        }, 150);
       } else {
         throw new Error(response?.message || 'Login failed - invalid response format');
       }
     } catch (error) {
       console.error('❌ Login form error:', error);
       
-      // ✅ IMPROVED: Better error handling with field-specific validation
+      // ✅ Track login error with Google Analytics
       const errorMessage = error?.message || 'Login failed';
+      analytics.error('login_error', errorMessage);
+
+      // ✅ Track failed login attempt
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', 'login_failed', {
+          event_category: 'User',
+          event_label: errorMessage,
+        });
+      }
       
       if (errorMessage.toLowerCase().includes("roll number") || errorMessage.toLowerCase().includes("rollnumber")) {
         setError("rollNumber", {
@@ -109,7 +142,6 @@ function Login() {
           message: errorMessage,
         });
       } else {
-        // Show general error as toast
         toast.error(errorMessage);
       }
     }
@@ -126,6 +158,14 @@ function Login() {
         const adminEmails = ["nitinemailss@gmail.com"];
         
         console.log('🔄 User already logged in, redirecting...');
+
+        // ✅ Track auto-redirect (user already logged in)
+        if (typeof window.gtag !== 'undefined') {
+          window.gtag('event', 'auto_redirect', {
+            event_category: 'Navigation',
+            event_label: 'already_logged_in',
+          });
+        }
         
         if (adminEmails.includes(parsedUser.email)) {
           navigate('/admin/dashboard', { replace: true });
@@ -134,9 +174,11 @@ function Login() {
         }
       } catch (error) {
         console.error('Error parsing stored user data:', error);
-        // Clear invalid data
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+
+        // ✅ Track invalid session error
+        analytics.error('invalid_session', 'Failed to parse stored user data');
       }
     }
   }, [navigate]);
@@ -184,11 +226,9 @@ function Login() {
                     disabled={isSubmitting}
                     autoComplete="username"
                   />
-                  {/* Focus glow effect */}
                   <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 rounded-xl opacity-0 focus-within:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                 </div>
 
-                {/* Error message */}
                 {errors.rollNumber && (
                   <div className="form-error">
                     <div className="w-1 h-1 bg-red-400 rounded-full flex-shrink-0"></div>
@@ -196,7 +236,6 @@ function Login() {
                   </div>
                 )}
 
-                {/* Helper text - only show when no error */}
                 {!errors.rollNumber && (
                   <div className="flex items-center space-x-2 text-slate-500 text-xs">
                     <div className="w-1 h-1 bg-slate-500 rounded-full flex-shrink-0"></div>
@@ -224,7 +263,6 @@ function Login() {
                     autoComplete="current-password"
                   />
 
-                  {/* Password toggle button */}
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
@@ -239,11 +277,9 @@ function Login() {
                     )}
                   </button>
 
-                  {/* Focus glow effect */}
                   <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 rounded-xl opacity-0 focus-within:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                 </div>
 
-                {/* Error message */}
                 {errors.password && (
                   <div className="form-error">
                     <div className="w-1 h-1 bg-red-400 rounded-full flex-shrink-0"></div>
@@ -293,6 +329,15 @@ function Login() {
                 <Link
                   to="/auth/register"
                   className="text-cyan-400 hover:text-cyan-300 font-medium transition-all duration-300 relative group"
+                  onClick={() => {
+                    // ✅ Track navigation to register page
+                    if (typeof window.gtag !== 'undefined') {
+                      window.gtag('event', 'click', {
+                        event_category: 'Navigation',
+                        event_label: 'login_to_register',
+                      });
+                    }
+                  }}
                 >
                   Create one here
                   <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-cyan-400 transition-all duration-300 group-hover:w-full"></span>

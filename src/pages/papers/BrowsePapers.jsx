@@ -1,21 +1,23 @@
-// src/pages/papers/BrowsePapers.jsx - With Pagination & Enhanced Search
+// src/pages/papers/BrowsePapers.jsx - Optimized with Analytics & Flexible Search
 
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { 
   LibraryBooks,
   Refresh,
   Clear,
-  FilterList
+  FilterList,
+  Info
 } from '@mui/icons-material'
 
 import { paperService } from '../../services/paperService'
 import PaperCard from '../../components/papers/PaperCard'
+import { analytics, trackPageView } from '../../utils/analytics' // ✅ Added trackPageView
 
 function BrowsePapers() {
   // State management
-  const [papers, setPapers] = useState([])
+  const [allPapers, setAllPapers] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterOptions, setFilterOptions] = useState({})
   const [sortBy, setSortBy] = useState('newest')
@@ -23,7 +25,7 @@ function BrowsePapers() {
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
-  const [papersPerPage] = useState(10) // 10 papers per page
+  const [papersPerPage] = useState(12)
   
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('')
@@ -36,6 +38,21 @@ function BrowsePapers() {
   })
 
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+
+  // ✅ Track page view on mount
+  useEffect(() => {
+    trackPageView(location.pathname)
+    analytics.browseView()
+    
+    // ✅ Track initial visit
+    if (typeof window.gtag !== 'undefined') {
+      window.gtag('event', 'page_view', {
+        page_title: 'Browse Papers',
+        page_location: location.pathname,
+      });
+    }
+  }, [location.pathname])
 
   // Get filters from URL on load
   const getFiltersFromURL = () => {
@@ -59,34 +76,80 @@ function BrowsePapers() {
     })
     setCurrentPage(parseInt(urlFilters.page) || 1)
     
+    // ✅ Track URL filter usage
+    const hasURLFilters = Object.entries(urlFilters).some(([key, value]) => 
+      key !== 'page' && value
+    );
+    
+    if (hasURLFilters && typeof window.gtag !== 'undefined') {
+      window.gtag('event', 'url_filters_applied', {
+        event_category: 'Browse',
+        event_label: JSON.stringify(urlFilters),
+      });
+    }
+    
     return urlFilters
   }
 
-  // ✅ ENHANCED: Normalize text for flexible searching (removes dots, special chars)
+  // Normalize text for flexible searching
   const normalizeText = (text) => {
     if (!text) return ''
     return text
       .toLowerCase()
-      .replace(/[.\-_\s]/g, '') // Remove dots, hyphens, underscores, spaces
+      .replace(/[.\-_]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim()
   }
 
-  // ✅ ENHANCED: Client-side filtering with regex-like matching
-  const filterPapersClientSide = (allPapers) => {
-    let filtered = allPapers
+  // ✅ IMPROVED: Flexible word-based search (order doesn't matter)
+  const matchesSearch = (paper, query) => {
+    if (!query.trim()) return true
 
-    // Search query filter
+    const searchWords = normalizeText(query)
+      .split(' ')
+      .filter(word => word.length > 0)
+
+    if (searchWords.length === 0) return true
+
+    const searchableText = normalizeText([
+      paper.title || '',
+      paper.subject || '',
+      paper.class || '',
+      paper.semester || '',
+      paper.examType || '',
+      paper.year || '',
+      ...(paper.tags || [])
+    ].join(' '))
+
+    return searchWords.every(word => searchableText.includes(word))
+  }
+
+  // Client-side sorting
+  const sortPapers = (papersToSort) => {
+    const sorted = [...papersToSort]
+    
+    switch (sortBy) {
+      case 'newest':
+        return sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      case 'popular':
+        return sorted.sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
+      case 'title':
+        return sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+      default:
+        return sorted
+    }
+  }
+
+  // IMPROVED: Instant client-side filtering with flexible search
+  const getFilteredPapers = () => {
+    let filtered = [...allPapers]
+
+    // ✅ Flexible search query filter
     if (searchQuery.trim()) {
-      const normalizedQuery = normalizeText(searchQuery)
-      filtered = filtered.filter(paper => {
-        const titleMatch = normalizeText(paper.title || '').includes(normalizedQuery)
-        const subjectMatch = normalizeText(paper.subject || '').includes(normalizedQuery)
-        const classMatch = normalizeText(paper.class || '').includes(normalizedQuery)
-        return titleMatch || subjectMatch || classMatch
-      })
+      filtered = filtered.filter(paper => matchesSearch(paper, searchQuery))
     }
 
-    // Status filters
+    // Other filters
     if (filters.subject) {
       filtered = filtered.filter(paper => 
         normalizeText(paper.subject).includes(normalizeText(filters.subject))
@@ -107,14 +170,16 @@ function BrowsePapers() {
       filtered = filtered.filter(paper => paper.year === filters.year)
     }
 
-    return filtered
+    return sortPapers(filtered)
   }
 
-  // Fetch papers
-  const fetchPapers = async (filterParams = {}) => {
+  // Fetch all papers once (no filtering on server)
+  const fetchPapers = async () => {
     setLoading(true)
+    const startTime = Date.now() // ✅ Track load time
+    
     try {
-      const response = await paperService.getBrowsePapers(filterParams)
+      const response = await paperService.getBrowsePapers({ sortBy })
       let papersData = []
       
       if (response?.data?.papers) {
@@ -127,11 +192,34 @@ function BrowsePapers() {
         papersData = response
       }
       
-      setPapers(Array.isArray(papersData) ? papersData : [])
+      setAllPapers(Array.isArray(papersData) ? papersData : [])
+      
+      // ✅ Track successful load
+      const loadTime = Date.now() - startTime;
+      
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', 'papers_loaded', {
+          event_category: 'Browse',
+          papers_count: papersData.length,
+          load_time: loadTime,
+        });
+
+        // ✅ Track load performance
+        window.gtag('event', 'timing_complete', {
+          name: 'browse_papers_load',
+          value: loadTime,
+          event_category: 'Performance',
+        });
+      }
+      
     } catch (error) {
       console.error('Failed to fetch papers:', error)
       toast.error('Failed to load papers. Please try again.')
-      setPapers([])
+      
+      // ✅ Track error
+      analytics.error('fetch_papers_error', error.message)
+      
+      setAllPapers([])
     } finally {
       setLoading(false)
     }
@@ -150,49 +238,70 @@ function BrowsePapers() {
       })
     } catch (error) {
       console.error('Failed to fetch filter options:', error)
+      
+      // ✅ Track error
+      analytics.error('fetch_filter_options_error', error.message)
     }
   }
 
-  const applyFilters = () => {
+  // Update URL params without re-fetching
+  const updateURLParams = () => {
     const allFilters = {
       search: searchQuery.trim(),
       ...filters,
-      sortBy: sortBy,
       page: currentPage.toString()
     }
 
-    // Remove empty filters
     const cleanFilters = Object.fromEntries(
       Object.entries(allFilters).filter(([_, value]) => value && value !== '')
     )
     
-    // Update URL
     setSearchParams(cleanFilters)
-    
-    // Fetch papers (server will handle initial filtering)
-    fetchPapers({ sortBy })
   }
 
-  // Handle filter changes
+  // Handle filter changes with analytics
   const handleFilterChange = (filterName, value) => {
     setFilters(prev => ({
       ...prev,
       [filterName]: value
     }))
-    setCurrentPage(1) // Reset to first page
+    setCurrentPage(1)
+    
+    // ✅ Track filter application
+    if (value) {
+      analytics.filterApply(filterName, value)
+      
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', 'filter_applied', {
+          event_category: 'Browse',
+          event_label: `${filterName}: ${value}`,
+          filter_type: filterName,
+          filter_value: value,
+        });
+      }
+    }
   }
 
-  // Handle sort change
+  // Handle sort change with analytics
   const handleSortChange = (newSort) => {
     setSortBy(newSort)
-    setCurrentPage(1) // Reset to first page
-    setTimeout(() => {
-      applyFilters()
-    }, 100)
+    setCurrentPage(1)
+    
+    // ✅ Track sort change
+    if (typeof window.gtag !== 'undefined') {
+      window.gtag('event', 'sort_changed', {
+        event_category: 'Browse',
+        event_label: newSort,
+        previous_sort: sortBy,
+        new_sort: newSort,
+      });
+    }
   }
 
   // Clear all filters
   const clearAllFilters = () => {
+    const previousFilters = { ...filters, search: searchQuery };
+    
     setSearchQuery('')
     setFilters({
       subject: '',
@@ -204,31 +313,82 @@ function BrowsePapers() {
     setSortBy('newest')
     setCurrentPage(1)
     setSearchParams({})
-    fetchPapers({ sortBy: 'newest' })
+    
+    // ✅ Track clear filters
+    if (typeof window.gtag !== 'undefined') {
+      window.gtag('event', 'filters_cleared', {
+        event_category: 'Browse',
+        event_label: JSON.stringify(previousFilters),
+        had_search: !!searchQuery,
+        had_filters: Object.values(filters).some(v => v),
+      });
+    }
   }
 
-  // ✅ IMPROVED: Reduced debounce to 300ms
+  // Track search when query changes (with debounce effect)
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      setCurrentPage(1) // Reset page on search
-      applyFilters()
-    }, 300) // Reduced from 500ms to 300ms
+    if (searchQuery.trim()) {
+      const timer = setTimeout(() => {
+        const resultsCount = getFilteredPapers().length
+        
+        // ✅ Track search with results
+        analytics.search(searchQuery, resultsCount)
+        
+        if (typeof window.gtag !== 'undefined') {
+          window.gtag('event', 'search', {
+            search_term: searchQuery,
+            results_count: resultsCount,
+            has_results: resultsCount > 0,
+          });
+        }
+      }, 1000) // Track after 1 second of no typing
 
-    return () => clearTimeout(timeoutId)
-  }, [searchQuery, filters, sortBy])
+      return () => clearTimeout(timer)
+    }
+  }, [searchQuery])
 
-  // Initial load
+  // Update filters and reset page
+  useEffect(() => {
+    setCurrentPage(1)
+    updateURLParams()
+  }, [searchQuery, filters])
+
+  // Update URL when page changes
+  useEffect(() => {
+    updateURLParams()
+    
+    // ✅ Track pagination
+    if (currentPage > 1) {
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', 'pagination', {
+          event_category: 'Browse',
+          event_label: `Page ${currentPage}`,
+          page_number: currentPage,
+          total_pages: Math.ceil(getFilteredPapers().length / papersPerPage),
+        });
+      }
+    }
+  }, [currentPage])
+
+  // Initial load only
   useEffect(() => {
     fetchFilterOptions()
-    const initialFilters = getFiltersFromURL()
-    fetchPapers(initialFilters)
+    getFiltersFromURL()
+    fetchPapers()
   }, [])
 
-  // Check if any filters are active
-  const hasActiveFilters = searchQuery || Object.values(filters).some(value => value) || sortBy !== 'newest'
+  // Re-fetch when sort changes
+  useEffect(() => {
+    if (allPapers.length > 0) {
+      fetchPapers()
+    }
+  }, [sortBy])
 
-  // ✅ PAGINATION LOGIC
-  const filteredPapers = filterPapersClientSide(papers)
+  // Check if any filters are active
+  const hasActiveFilters = searchQuery || Object.values(filters).some(value => value)
+
+  // Get filtered papers and pagination
+  const filteredPapers = getFilteredPapers()
   const indexOfLastPaper = currentPage * papersPerPage
   const indexOfFirstPaper = indexOfLastPaper - papersPerPage
   const currentPapers = filteredPapers.slice(indexOfFirstPaper, indexOfLastPaper)
@@ -236,11 +396,22 @@ function BrowsePapers() {
 
   const paginate = (pageNumber) => {
     setCurrentPage(pageNumber)
-    setSearchParams(prev => {
-      const params = Object.fromEntries(prev.entries())
-      return { ...params, page: pageNumber.toString() }
-    })
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Handle refresh
+  const handleRefresh = () => {
+    fetchPapers()
+    
+    // ✅ Track refresh
+    if (typeof window.gtag !== 'undefined') {
+      window.gtag('event', 'refresh', {
+        event_category: 'Browse',
+        event_label: 'manual_refresh',
+      });
+    }
+    
+    toast.info('Refreshing papers...')
   }
 
   return (
@@ -262,14 +433,24 @@ function BrowsePapers() {
           <div className="relative mb-3 sm:mb-4">
             <input
               type="text"
-              placeholder="Search by title, subject, class (e.g., bcom, btech)..."
+              placeholder="Search flexibly (e.g., 'bca 3', 'finals btech', 'mst physics')..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-3 sm:pl-4 pr-10 py-2 sm:py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => {
+                  setSearchQuery('')
+                  
+                  // ✅ Track search clear
+                  if (typeof window.gtag !== 'undefined') {
+                    window.gtag('event', 'search_cleared', {
+                      event_category: 'Browse',
+                      previous_query: searchQuery,
+                    });
+                  }
+                }}
                 className="absolute right-2 sm:right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-300"
               >
                 <Clear fontSize="small" />
@@ -280,7 +461,19 @@ function BrowsePapers() {
           {/* Filter Controls */}
           <div className="flex items-center justify-between mb-3 sm:mb-4">
             <button
-              onClick={() => setShowFilters(!showFilters)}
+              onClick={() => {
+                const newState = !showFilters;
+                setShowFilters(newState)
+                
+                // ✅ Track filter toggle
+                if (typeof window.gtag !== 'undefined') {
+                  window.gtag('event', 'toggle_filters', {
+                    event_category: 'Browse',
+                    event_label: newState ? 'opened' : 'closed',
+                    action: newState ? 'open' : 'close',
+                  });
+                }
+              }}
               className={`btn-xs sm:btn-sm flex items-center space-x-1 sm:space-x-2 ${showFilters ? 'btn-primary' : 'btn-secondary'}`}
             >
               <FilterList fontSize="small" />
@@ -378,14 +571,14 @@ function BrowsePapers() {
           {loading ? 'Loading...' : (
             <>
               <span className="inline">
-                Showing {indexOfFirstPaper + 1}-{Math.min(indexOfLastPaper, filteredPapers.length)} of {filteredPapers.length}
+                Showing {filteredPapers.length === 0 ? 0 : indexOfFirstPaper + 1}-{Math.min(indexOfLastPaper, filteredPapers.length)} of {filteredPapers.length}
               </span>
             </>
           )}
         </span>
         {!loading && (
           <button
-            onClick={() => applyFilters()}
+            onClick={handleRefresh}
             className="text-slate-400 hover:text-slate-300 flex items-center space-x-1"
           >
             <Refresh fontSize="small" />
@@ -409,20 +602,33 @@ function BrowsePapers() {
           <p className="text-slate-500 mb-4 text-xs sm:text-sm">
             {searchQuery ? `No results for "${searchQuery}"` : 'Try adjusting your search criteria'}
           </p>
-          <button onClick={clearAllFilters} className="btn-sm sm:btn-md btn-primary">
+          <button 
+            onClick={() => {
+              clearAllFilters()
+              
+              // ✅ Track no results action
+              if (typeof window.gtag !== 'undefined') {
+                window.gtag('event', 'no_results_clear', {
+                  event_category: 'Browse',
+                  search_query: searchQuery,
+                });
+              }
+            }} 
+            className="btn-sm sm:btn-md btn-primary"
+          >
             Show All Papers
           </button>
         </div>
       ) : (
         <>
           {/* Papers Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
             {currentPapers.map((paper) => (
               <PaperCard key={paper._id} paper={paper} />
             ))}
           </div>
 
-          {/* ✅ PAGINATION - Mobile Optimized */}
+          {/* PAGINATION - Mobile Optimized */}
           {totalPages > 1 && (
             <div className="card glass bg-slate-800/30 border border-slate-700/50">
               <div className="p-3 sm:p-4">
@@ -490,6 +696,21 @@ function BrowsePapers() {
           )}
         </>
       )}
+
+      {/* Library Notice */}
+      <div className="card glass bg-blue-500/10 border border-blue-500/30 mt-4">
+        <div className="p-3 sm:p-4 flex items-start space-x-3">
+          <Info className="text-blue-400 flex-shrink-0 text-sm sm:text-md mt-0.5" />
+          <div>
+            <h3 className="text-blue-300 font-semibold text-sm sm:text-base mb-1">
+              Library Resource Notice
+            </h3>
+            <p className="text-blue-200/80 text-xs sm:text-sm leading-relaxed">
+              All papers are sourced from our college library's official collection. If you encounter any issues with content accuracy or availability, please visit the library for verification.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

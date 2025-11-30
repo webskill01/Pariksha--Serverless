@@ -1,5 +1,3 @@
-// Frontend/src/components/home/FeaturesSection.jsx - Updated for 2 columns on mobile
-
 import { 
   CloudDownload, 
   Security, 
@@ -50,20 +48,20 @@ function FeaturesSection() {
   ]
 
   const colorClasses = {
-    blue: 'from-blue-500/20 to-cyan-500/20 border-blue-500/30 text-blue-400',
-    green: 'from-green-500/20 to-emerald-500/20 border-green-500/30 text-green-400',
-    purple: 'from-purple-500/20 to-violet-500/20 border-purple-500/30 text-purple-400',
-    yellow: 'from-yellow-500/20 to-amber-500/20 border-yellow-500/30 text-yellow-400',
-    red: 'from-red-500/20 to-rose-500/20 border-red-500/30 text-red-400',
-    cyan: 'from-cyan-500/20 to-teal-500/20 border-cyan-500/30 text-cyan-400'
+    blue: 'text-blue-400 bg-blue-500/10',
+    green: 'text-green-400 bg-green-500/10',
+    purple: 'text-purple-400 bg-purple-500/10',
+    yellow: 'text-yellow-400 bg-yellow-500/10',
+    red: 'text-red-400 bg-red-500/10',
+    cyan: 'text-cyan-400 bg-cyan-500/10'
   }
 
   return (
-    <div className="py-12 sm:py-16 lg:py-20 bg-slate-900">
+    <div className="py-10 bg-slate-900">
       <div className="container-custom">
         
         {/* Section header */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-4">
             Why Students Choose 
             <span className="block gradient-text">Pariksha?</span>
@@ -74,26 +72,28 @@ function FeaturesSection() {
           </p>
         </div>
 
-        {/* Features grid - UPDATED: 2 columns on mobile, 3 on larger screens */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-4 sm:gap-6">
+        {/* Features grid - No cards, clean informational layout */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 sm:gap-10 lg:gap-12">
           {features.map((feature, index) => (
-            <div
-              key={index}
-              className={`card glass border bg-gradient-to-br ${colorClasses[feature.color]} p-4 sm:p-6 hover:scale-105 transition-all duration-300 group`}
-            >
-              <div className="text-center">
-                <div className={`mb-3 sm:mb-4 ${colorClasses[feature.color].split(' ').pop()}`}>
-                  <div className="text-2xl sm:text-3xl">
+            <div key={index} className="text-center space-y-3">
+              {/* Icon with circular background - non-clickable appearance */}
+              <div className="flex justify-center">
+                <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full ${colorClasses[feature.color]} flex items-center justify-center`}>
+                  <div className={colorClasses[feature.color].split(' ')[0]}>
                     {feature.icon}
                   </div>
                 </div>
-                <h3 className="text-sm sm:text-lg font-bold text-white mb-2 sm:mb-3 group-hover:text-cyan-400 transition-colors duration-300">
-                  {feature.title}
-                </h3>
-                <p className="text-slate-300 leading-relaxed text-xs sm:text-sm">
-                  {feature.description}
-                </p>
               </div>
+              
+              {/* Title */}
+              <h3 className="text-base sm:text-lg font-bold text-white">
+                {feature.title}
+              </h3>
+              
+              {/* Description */}
+              <p className="text-slate-400 leading-relaxed text-xs sm:text-sm">
+                {feature.description}
+              </p>
             </div>
           ))}
         </div>

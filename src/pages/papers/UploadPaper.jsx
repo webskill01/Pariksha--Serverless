@@ -1,9 +1,9 @@
-// Frontend/src/pages/papers/UploadPaper.jsx - Mobile-Optimized Version
+// Frontend/src/pages/papers/UploadPaper.jsx - With Google Analytics
 
-import { useState , useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { 
   Upload, 
@@ -22,6 +22,7 @@ import { paperUploadSchema } from '../../schemas/authSchemas'
 import { paperService } from '../../services/paperService'
 import { authService } from '../../services/authService'
 import FileUploadZone from '../../components/forms/FileUploadZone'
+import { analytics, trackPageView } from '../../utils/analytics' // ✅ Added analytics
 
 function UploadPaper() {
   // State management
@@ -31,6 +32,7 @@ function UploadPaper() {
   const [tagInput, setTagInput] = useState('')
   
   const navigate = useNavigate()
+  const location = useLocation()
   const user = authService.getCurrentUser()
 
   // Reactive authentication state
@@ -48,26 +50,20 @@ function UploadPaper() {
 
   // Listen for authentication changes
   useEffect(() => {
-    // Create a custom event listener for auth changes
     const handleAuthChange = () => {
       updateAuthState();
     };
 
-    // Listen for storage changes (works for different tabs)
     const handleStorageChange = (e) => {
       if (e.key === 'token' || e.key === 'user') {
         updateAuthState();
       }
     };
 
-    // Add event listeners
     window.addEventListener('authStateChanged', handleAuthChange);
     window.addEventListener('storage', handleStorageChange);
-    
-    // Also listen for focus events to catch same-tab changes
     window.addEventListener('focus', updateAuthState);
     
-    //  Set up interval to periodically check auth state (fallback)
     const authCheckInterval = setInterval(updateAuthState, 1000);
 
     return () => {
@@ -78,9 +74,20 @@ function UploadPaper() {
     };
   }, []);
 
-  
+  // ✅ Track page view on mount
+  useEffect(() => {
+    trackPageView(location.pathname);
+    
+    // ✅ Track upload page view event
+    if (typeof window.gtag !== 'undefined') {
+      window.gtag('event', 'page_view', {
+        page_title: 'Upload Paper',
+        page_location: location.pathname,
+      });
+    }
+  }, [location.pathname]);
 
-  // React Hook Form setup with Yup validation
+  // React Hook Form setup
   const {
     register,
     handleSubmit,
@@ -103,7 +110,8 @@ function UploadPaper() {
       file: null
     }
   })
-const isUserAdmin = () => {
+
+  const isUserAdmin = () => {
     return currentUser?.role === 'admin' ||
            currentUser?.isAdmin === true ||
            currentUser?.userType === 'admin' ||
@@ -115,6 +123,20 @@ const isUserAdmin = () => {
     setSelectedFile(file)
     setValue('file', file)
     clearErrors('file')
+    
+    // ✅ Track file selection
+    if (file) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', 'file_selected', {
+          event_category: 'Upload',
+          event_label: file.type,
+          value: parseInt(fileSizeMB),
+          file_size_mb: fileSizeMB,
+        });
+      }
+    }
   }
 
   // Handle tag input
@@ -132,6 +154,15 @@ const isUserAdmin = () => {
       setTags(updatedTags)
       setValue('tags', updatedTags)
       setTagInput('')
+      
+      // ✅ Track tag addition
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', 'tag_added', {
+          event_category: 'Upload',
+          event_label: newTag,
+          total_tags: updatedTags.length,
+        });
+      }
     }
   }
 
@@ -139,6 +170,15 @@ const isUserAdmin = () => {
     const updatedTags = tags.filter(tag => tag !== tagToRemove)
     setTags(updatedTags)
     setValue('tags', updatedTags)
+    
+    // ✅ Track tag removal
+    if (typeof window.gtag !== 'undefined') {
+      window.gtag('event', 'tag_removed', {
+        event_category: 'Upload',
+        event_label: tagToRemove,
+        remaining_tags: updatedTags.length,
+      });
+    }
   }
 
   // Form submission handler
@@ -148,10 +188,16 @@ const isUserAdmin = () => {
         type: 'manual', 
         message: 'Please select a PDF file to upload' 
       })
+      
+      // ✅ Track validation error
+      analytics.error('upload_validation_error', 'No file selected')
+      
       return
     }
 
     setIsUploading(true)
+    const startTime = Date.now() // ✅ Track upload time
+    
     try {
       // Prepare FormData for multipart upload
       const formData = new FormData()
@@ -163,9 +209,19 @@ const isUserAdmin = () => {
       formData.append('examType', data.examType)
       formData.append('file', selectedFile)
       
-      // Append tags as JSON string
       if (tags.length > 0) {
         formData.append('tags', JSON.stringify(tags))
+      }
+
+      // ✅ Track upload start
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', 'upload_start', {
+          event_category: 'Upload',
+          event_label: data.subject,
+          exam_type: data.examType,
+          has_tags: tags.length > 0,
+          file_size: selectedFile.size,
+        });
       }
 
       // Upload with progress tracking
@@ -174,29 +230,76 @@ const isUserAdmin = () => {
           const percentCompleted = Math.round(
             (progressEvent.loaded * 100) / progressEvent.total
           )
+          
+          // ✅ Track upload progress milestones
+          if (percentCompleted === 50 || percentCompleted === 100) {
+            if (typeof window.gtag !== 'undefined') {
+              window.gtag('event', 'upload_progress', {
+                event_category: 'Upload',
+                event_label: `${percentCompleted}%`,
+                value: percentCompleted,
+              });
+            }
+          }
         }
       })
 
-      // Success feedback
+      // ✅ Calculate upload duration
+      const uploadDuration = Date.now() - startTime;
+
+      // ✅ Track successful upload
+      analytics.paperUpload(data.title);
+      
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', 'upload_success', {
+          event_category: 'Upload',
+          event_label: data.subject,
+          exam_type: data.examType,
+          class: data.class,
+          semester: data.semester,
+          tags_count: tags.length,
+          upload_duration: uploadDuration,
+        });
+
+        // ✅ Track upload timing
+        window.gtag('event', 'timing_complete', {
+          name: 'paper_upload',
+          value: uploadDuration,
+          event_category: 'Performance',
+          event_label: data.examType,
+        });
+      }
+
       toast.success('Paper uploaded successfully! It will be reviewed by admins.')
       
-      // Reset form and redirect
+      // Reset form
       reset()
       setSelectedFile(null)
       setTags([])
       setTagInput('')
       
-      // Redirect to dashboard after short delay
+      // Redirect to dashboard after delay
       setTimeout(() => {
         if (isUserAdmin()) {
-    navigate('/admin/dashboard')
-  } else {
-    navigate('/dashboard')
-  }
+          navigate('/admin/dashboard')
+        } else {
+          navigate('/dashboard')
+        }
       }, 2000)
 
     } catch (error) {
       console.error('Upload error:', error)
+      
+      // ✅ Track upload error
+      analytics.error('upload_error', error.message || 'Unknown error');
+      
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', 'upload_failed', {
+          event_category: 'Upload',
+          event_label: error.message || 'Unknown error',
+          error_type: error.response?.status || 'network_error',
+        });
+      }
       
       // Handle specific error cases
       if (error.message?.includes('title')) {
@@ -229,7 +332,7 @@ const isUserAdmin = () => {
           <div className="w-16 sm:w-24 h-0.5 bg-gradient-to-r from-transparent via-cyan-500 to-transparent mx-auto mt-3 sm:mt-4"></div>
         </div>
 
-        {/* Upload Form - Mobile-Optimized */}
+        {/* Upload Form */}
         <div className="card glass-strong">
           <div className="card-body p-4 sm:p-6 lg:p-8">
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 sm:space-y-8">
@@ -255,54 +358,65 @@ const isUserAdmin = () => {
                 />
               </div>
 
-              {/* Paper Information Section - Mobile-Optimized Grid */}
+              {/* Paper Information Section */}
               <div className="space-y-4 sm:space-y-6">
                 <h2 className="text-lg sm:text-xl font-semibold text-white flex items-center space-x-2">
                   <Subject className="text-cyan-400" />
                   <span>Paper Information</span>
                 </h2>
 
-                  
-                  {/* Title Field - Full width on all screens */}
-                  <div className="sm:col-span-2 space-y-2">
-                    <label className="form-label flex items-center space-x-2">
-                      <Subject className="text-slate-400" fontSize="small" />
-                      <span>Paper Title</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g., Python Final Exam 2024"
-                      className={`form-input ${errors.title ? 'form-input-error' : ''}`}
-                      {...register('title')}
-                      disabled={isUploading}
-                    />
-                    {errors.title && (
-                      <p className="form-error">{errors.title.message}</p>
-                    )}
-                    <p className="text-xs text-slate-500">
-                      Enter a descriptive title that clearly identifies the paper (Fill Combined if the pdf contains more than one paper)
-                    </p>
-                  </div>
+                {/* Title Field */}
+                <div className="sm:col-span-2 space-y-2">
+                  <label className="form-label flex items-center space-x-2">
+                    <Subject className="text-slate-400" fontSize="small" />
+                    <span>Paper Title</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Python Final Exam 2024"
+                    className={`form-input ${errors.title ? 'form-input-error' : ''}`}
+                    {...register('title')}
+                    disabled={isUploading}
+                    onBlur={(e) => {
+                      // ✅ Track title field interaction
+                      if (e.target.value && typeof window.gtag !== 'undefined') {
+                        window.gtag('event', 'field_completed', {
+                          event_category: 'Upload',
+                          event_label: 'title',
+                        });
+                      }
+                    }}
+                  />
+                  {errors.title && (
+                    <p className="form-error">{errors.title.message}</p>
+                  )}
+                  <p className="text-xs text-slate-500">
+                    Enter a descriptive title that clearly identifies the paper
+                  </p>
+                </div>
 
-                  {/* Subject Field */}
-                  <div className="space-y-2">
-                    <label className="form-label flex items-center space-x-2">
-                      <School className="text-slate-400" fontSize="small" />
-                      <span>Subject</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g., Python Programming "
-                      className={`form-input ${errors.subject ? 'form-input-error' : ''}`}
-                      {...register('subject')}
-                      disabled={isUploading}
-                    />
-                    {errors.subject && (
-                      <p className="form-error">{errors.subject.message}</p>
-                    )}
-                  </div>
+                {/* Subject Field */}
+                <div className="space-y-2">
+                  <label className="form-label flex items-center space-x-2">
+                    <School className="text-slate-400" fontSize="small" />
+                    <span>Subject</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Python Programming"
+                    className={`form-input ${errors.subject ? 'form-input-error' : ''}`}
+                    {...register('subject')}
+                    disabled={isUploading}
+                  />
+                  {errors.subject && (
+                    <p className="form-error">{errors.subject.message}</p>
+                  )}
+                  <p className="text-xs text-slate-500">
+                    Fill Combined if the pdf contains more than one paper
+                  </p>
+                </div>
 
-                {/* Form Fields Grid - 2 columns on mobile, responsive */}
+                {/* Form Fields Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 sm:gap-6">
                   {/* Class Field */}
                   <div className="space-y-2">
@@ -332,6 +446,16 @@ const isUserAdmin = () => {
                       className={`form-input ${errors.semester ? 'form-input-error' : ''}`}
                       {...register('semester')}
                       disabled={isUploading}
+                      onChange={(e) => {
+                        // ✅ Track semester selection
+                        if (e.target.value && typeof window.gtag !== 'undefined') {
+                          window.gtag('event', 'field_selected', {
+                            event_category: 'Upload',
+                            event_label: 'semester',
+                            value: e.target.value,
+                          });
+                        }
+                      }}
                     >
                       <option value="">Select semester</option>
                       <option value="1st">1st Semester</option>
@@ -356,8 +480,18 @@ const isUserAdmin = () => {
                       className={`form-input ${errors.year ? 'form-input-error' : ''}`}
                       {...register('year')}
                       disabled={isUploading}
+                      onChange={(e) => {
+                        // ✅ Track year selection
+                        if (e.target.value && typeof window.gtag !== 'undefined') {
+                          window.gtag('event', 'field_selected', {
+                            event_category: 'Upload',
+                            event_label: 'year',
+                            value: e.target.value,
+                          });
+                        }
+                      }}
                     >
-                      <option value="" defaultValue={"Select year"}>Select year</option>
+                      <option value="">Select year</option>
                       <option value="2023">2023</option>
                       <option value="2024">2024</option>
                       <option value="2025">2025</option>
@@ -377,8 +511,18 @@ const isUserAdmin = () => {
                       className={`form-input ${errors.examType ? 'form-input-error' : ''}`}
                       {...register('examType')}
                       disabled={isUploading}
+                      onChange={(e) => {
+                        // ✅ Track exam type selection
+                        if (e.target.value && typeof window.gtag !== 'undefined') {
+                          window.gtag('event', 'field_selected', {
+                            event_category: 'Upload',
+                            event_label: 'exam_type',
+                            value: e.target.value,
+                          });
+                        }
+                      }}
                     >
-                      <option value="" defaultValue={"Select exam type"}>Select exam type</option>
+                      <option value="">Select exam type</option>
                       <option value="Mst-1">MST-1 (Mid Semester Test 1)</option>
                       <option value="Mst-2">MST-2 (Mid Semester Test 2)</option>
                       <option value="Final">Final Exam</option>
@@ -389,7 +533,7 @@ const isUserAdmin = () => {
                   </div>
                 </div>
 
-                {/* Tags Section - Full width */}
+                {/* Tags Section */}
                 <div className="space-y-3 sm:space-y-4">
                   <label className="form-label flex items-center space-x-2">
                     <Tag className="text-slate-400" fontSize="small" />
@@ -444,6 +588,7 @@ const isUserAdmin = () => {
                   </p>
                 </div>
               </div>
+
               {/* Submit Button */}
               <div className="flex justify-center pt-4">
                 <button
@@ -471,14 +616,14 @@ const isUserAdmin = () => {
           </div>
         </div>
 
-        {/* Compact Help Section */}
+        {/* Help Section */}
         <div className="mt-6 sm:mt-8 text-center">
           <div className="card glass bg-slate-800/30 border border-slate-700/50 p-4 sm:p-6">
             <h3 className="text-base sm:text-lg font-semibold text-white mb-3">
               📋 Upload Guidelines
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 sm:gap-4 text-xs  sm:text-sm text-slate-400">
-              <div className=''>
+            <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 sm:gap-4 text-xs sm:text-sm text-slate-400">
+              <div>
                 • Only PDF files are accepted<br/>
                 • Maximum file size: 8MB<br/>
                 • Clear, readable scans only

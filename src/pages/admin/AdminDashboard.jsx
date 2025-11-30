@@ -1,5 +1,6 @@
-// src/pages/admin/AdminDashboard.jsx - 2 Cols Grid on ALL Screens + Preview Button
-import { useState, useEffect } from 'react';
+// src/pages/admin/AdminDashboard.jsx - WITH CLICKABLE CARDS
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom'; // ✅ Added useNavigate
 import { toast } from 'react-toastify';
 import { 
   Dashboard as DashboardIcon, 
@@ -14,7 +15,8 @@ import {
   DeleteOutlined,
   Visibility,
   Close,
-  People
+  People,
+  OpenInNew // ✅ Added OpenInNew
 } from '@mui/icons-material';
 
 import { adminService } from '../../services/adminService';
@@ -35,6 +37,9 @@ function AdminDashboard() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewPaper, setPreviewPaper] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(true);
+  
+  // Store scroll position
+  const scrollPositionRef = useRef(0);
 
   useEffect(() => {
     fetchAdminData();
@@ -87,6 +92,9 @@ function AdminDashboard() {
 
   const handlePreview = (paper) => {
     if (paper?.fileUrl) {
+      scrollPositionRef.current = window.scrollY;
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      
       setPreviewPaper(paper);
       setShowPreview(true);
       setPreviewLoading(true);
@@ -102,6 +110,13 @@ function AdminDashboard() {
     setPreviewPaper(null);
     setPreviewLoading(true);
     document.body.style.overflow = 'unset';
+    
+    setTimeout(() => {
+      window.scrollTo({ 
+        top: scrollPositionRef.current, 
+        behavior: 'smooth' 
+      });
+    }, 50);
   };
 
   const getPdfJsViewerUrl = () => {
@@ -289,7 +304,7 @@ function AdminDashboard() {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer"
                 >
                   <option value="all">All Status ({papers.length})</option>
                   <option value="pending">Pending ({stats.papers?.pending || 0})</option>
@@ -300,7 +315,7 @@ function AdminDashboard() {
             </div>
           </div>
 
-          {/* ✅ 2-Column Grid for ALL Screen Sizes */}
+          {/* 2-Column Grid for ALL Screen Sizes */}
           {currentPapers.length === 0 ? (
             <div className="text-center py-12">
               <Description className="text-slate-600 text-4xl mb-4 mx-auto" />
@@ -378,19 +393,32 @@ function AdminDashboard() {
       {/* PDF Preview Modal */}
       {showPreview && previewPaper?.fileUrl && (
         <div 
-          className="fixed inset-0 bg-black/95 z-[9999] flex items-start justify-center overflow-y-auto"
-          style={{ padding: '1rem' }}
+          className="fixed inset-0 bg-black/95 z-[9999]"
+          style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'start',
+            justifyContent: 'center',
+            padding: '1rem'
+          }}
           onClick={closePreview}
         >
           <div 
-            className="relative bg-slate-900 rounded-xl w-full shadow-2xl my-4"
+            className="relative bg-slate-900 rounded-xl w-full shadow-2xl"
             style={{
               maxWidth: 'min(1400px, 95vw)',
-              minHeight: 'min(900px, calc(100vh - 2rem))',
+              height: 'min(90vh, 900px)',
+              display: 'flex',
+              flexDirection: 'column'
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border-b border-slate-700 bg-slate-800/95 backdrop-blur-sm rounded-t-xl">
+            {/* Header */}
+            <div className="flex-shrink-0 flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border-b border-slate-700 bg-slate-800/95 backdrop-blur-sm rounded-t-xl">
               <div className="flex items-center space-x-2 sm:space-x-3 flex-1 min-w-0">
                 <PictureAsPdf className="text-red-400 text-lg sm:text-xl flex-shrink-0" />
                 <h3 className="text-xs sm:text-sm md:text-base font-semibold text-white truncate">
@@ -401,6 +429,7 @@ function AdminDashboard() {
                 <button
                   onClick={handleDownloadFromPreview}
                   className="text-cyan-400 hover:text-cyan-300 text-xs sm:text-sm flex items-center space-x-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-slate-700 transition-colors"
+                  title="Download PDF"
                 >
                   <Download fontSize="small" />
                   <span className="hidden sm:inline">Download</span>
@@ -408,20 +437,16 @@ function AdminDashboard() {
                 <button
                   onClick={closePreview}
                   className="text-slate-400 hover:text-white transition-colors p-1.5 sm:p-2 rounded-lg hover:bg-slate-700"
+                  aria-label="Close preview"
+                  title="Close preview"
                 >
                   <Close fontSize="small" />
                 </button>
               </div>
             </div>
             
-            <div 
-              className="relative bg-slate-800 rounded-b-xl overflow-hidden"
-              style={{
-                height: 'calc(100vh - 6rem)',
-                minHeight: '500px',
-                maxHeight: '900px'
-              }}
-            >
+            {/* PDF Container */}
+            <div className="flex-1 relative bg-slate-800 rounded-b-xl overflow-hidden">
               {previewLoading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 z-10">
                   <div className="flex flex-col items-center space-y-4">
@@ -450,11 +475,13 @@ function AdminDashboard() {
   );
 }
 
-// ✅ Admin Compact Paper Card - Matching Original Style
+// ✅ UPDATED: Admin Compact Paper Card with Clickable Feature
 function AdminCompactPaperCard({ paper, onApprove, onReject, onDelete, onPreview }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
+  
+  const navigate = useNavigate(); // ✅ Added useNavigate
 
   const handlePreview = (e) => {
     e.preventDefault();
@@ -498,6 +525,13 @@ function AdminCompactPaperCard({ paper, onApprove, onReject, onDelete, onPreview
     }
   };
 
+  // ✅ NEW: Handle card click for approved papers
+  const handleCardClick = () => {
+    if (paper.status === 'approved') {
+      navigate(`/papers/${paper._id}`);
+    }
+  };
+
   if (!paper) return null;
 
   const getStatusColor = (status) => {
@@ -509,70 +543,88 @@ function AdminCompactPaperCard({ paper, onApprove, onReject, onDelete, onPreview
     }
   };
 
+  const isApproved = paper.status === 'approved';
+
   return (
-    <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-lg p-3 sm:p-4 hover:border-slate-600/50 hover:shadow-lg hover:shadow-cyan-500/10 transition-all duration-300 group">
-      
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="p-2 rounded-lg bg-red-500/20 group-hover:bg-red-500/30 transition-colors duration-300">
-          <PictureAsPdf className="text-red-400 text-lg" />
+    <div 
+      className={`bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-lg p-3 sm:p-4 hover:border-slate-600/50 hover:shadow-lg hover:shadow-cyan-500/10 transition-all duration-300 group flex flex-col ${isApproved ? 'cursor-pointer' : ''}`}
+      onClick={isApproved ? handleCardClick : undefined}
+    >
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-3">
+          <div className="p-2 rounded-lg bg-red-500/20 group-hover:bg-red-500/30 transition-colors duration-300">
+            <PictureAsPdf className="text-red-400 text-lg" />
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(paper.status)}`}>
+              {paper.status.charAt(0).toUpperCase() + paper.status.slice(1)}
+            </span>
+          </div>
         </div>
-        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(paper.status)}`}>
-          {paper.status.charAt(0).toUpperCase() + paper.status.slice(1)}
-        </span>
+
+        {/* Title */}
+        <h3 className="text-sm sm:text-base font-bold text-white mb-2 line-clamp-2 leading-tight group-hover:text-cyan-400 transition-colors duration-300">
+          {paper.title || 'Untitled Paper'}
+        </h3>
+
+        {/* Details */}
+        <div className="space-y-1.5 mb-3 text-xs">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="font-medium text-cyan-400 truncate">{paper.subject || 'N/A'}</span>
+            <span>{paper.year || 'N/A'}</span>
+          </div>
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="truncate">{paper.uploadedBy?.name || 'Anonymous'}</span>
+            <span>{paper.examType || 'N/A'}</span>
+          </div>
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="truncate">{paper.class || 'N/A'}</span>
+            <span className="flex items-center space-x-1">
+              <Download fontSize="inherit" />
+              <span>{paper.downloadCount || 0}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Rejection Reason */}
+        {paper.rejectionReason && (
+          <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded text-xs text-red-400">
+            <strong>Reason:</strong> {paper.rejectionReason}
+          </div>
+        )}
+
+        <div className="flex-1"></div>
+
+        {/* ✅ NEW: Click hint for approved papers */}
+        {isApproved && (
+          <div className="mb-2 text-center text-xs text-slate-500 group-hover:text-cyan-400 transition-colors">
+            Click to view <span className='hidden sm:inline'>full details</span>
+          </div>
+        )}
       </div>
 
-      {/* Title */}
-      <h3 className="text-sm sm:text-base font-bold text-white mb-2 line-clamp-2 leading-tight group-hover:text-cyan-400 transition-colors duration-300">
-        {paper.title || 'Untitled Paper'}
-      </h3>
+      {/* ✅ UPDATED: Action Buttons - Preview hidden for approved */}
+      <div className="grid grid-cols-2 gap-2 mt-auto">
+        {/* ✅ Preview only shows for non-approved papers */}
+        {!isApproved && (
+          <button
+            onClick={handlePreview}
+            disabled={!paper.fileUrl}
+            className="bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/40 text-cyan-300 hover:from-cyan-500/30 hover:to-blue-500/30 hover:border-cyan-400/60 hover:text-white rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-300 flex flex-col sm:flex-row items-center justify-center space-y-0.5 disabled:opacity-50 cursor-pointer sm:gap-0.5" 
+          >
+            <Visibility fontSize="small" />
+            <span>Preview</span>
+          </button>
+        )}
 
-      {/* Details */}
-      <div className="space-y-1.5 mb-3 text-xs">
-        <div className="flex items-center justify-between text-slate-400">
-          <span className="font-medium text-cyan-400 truncate">{paper.subject || 'N/A'}</span>
-          <span>{paper.year || 'N/A'}</span>
-        </div>
-        <div className="flex items-center justify-between text-slate-400">
-          <span className="truncate">{paper.uploadedBy?.name || 'Anonymous'}</span>
-          <span>{paper.examType || 'N/A'}</span>
-        </div>
-        <div className="flex items-center justify-between text-slate-400">
-          <span className="truncate">{paper.class || 'N/A'}</span>
-          <span className="flex items-center space-x-1">
-            <Download fontSize="inherit" />
-            <span>{paper.downloadCount || 0}</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Rejection Reason */}
-      {paper.rejectionReason && (
-        <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded text-xs text-red-400">
-          <strong>Reason:</strong> {paper.rejectionReason}
-        </div>
-      )}
-
-      {/* ✅ Action Buttons - Matching Original Layout */}
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
-        
-        {/* ✅ Preview Button - Same style as original Download button */}
-        <button
-          onClick={handlePreview}
-          disabled={!paper.fileUrl}
-          className="flex-1  bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/40 text-cyan-300 hover:from-cyan-500/30 hover:to-blue-500/30 hover:border-cyan-400/60 hover:text-white rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-300 flex items-center flex-col justify-center space-x-1 disabled:opacity-50"
-        >
-          <Visibility fontSize="small" />
-          <span>Preview</span>
-        </button>
-
-        {/* Approve/Reject for pending papers */}
+        {/* Approve/Reject for pending papers only */}
         {paper.status === 'pending' && (
           <>
             <button
               onClick={handleApprove}
               disabled={isApproving}
-              className="flex-1 min-w-0 bg-green-600/80 hover:bg-green-600 text-white rounded-md px-2 py-1.5 text-xs font-semibold transition-all duration-300 flex items-center justify-center flex-col space-x-1 disabled:opacity-50"
+              className="flex-1 min-w-0 bg-green-600/80 hover:bg-green-600 text-white rounded-md px-2 py-1.5 text-xs font-semibold transition-all duration-300 flex items-center justify-center flex-col sm:flex-row space-y-0.5 disabled:opacity-50 cursor-pointer sm:gap-0.5"
             >
               {isApproving ? (
                 <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -587,7 +639,7 @@ function AdminCompactPaperCard({ paper, onApprove, onReject, onDelete, onPreview
             <button
               onClick={handleReject}
               disabled={isRejecting}
-              className="flex-1 min-w-0 bg-yellow-600/80 hover:bg-yellow-600 text-white rounded-md px-2 py-1.5 text-xs font-semibold transition-all duration-300 flex items-center justify-center space-x-1 disabled:opacity-50 flex-col "
+              className="flex-1 min-w-0 bg-yellow-600/80 hover:bg-yellow-600 text-white rounded-md px-2 py-1.5 text-xs font-semibold transition-all duration-300 flex items-center justify-center flex-col sm:flex-row space-y-0.5 disabled:opacity-50 cursor-pointer sm:gap-0.5"
             >
               {isRejecting ? (
                 <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -601,11 +653,11 @@ function AdminCompactPaperCard({ paper, onApprove, onReject, onDelete, onPreview
           </>
         )}
 
-        {/* Delete button */}
+        {/* Delete button - full width when approved */}
         <button
           onClick={handleDelete}
           disabled={isDeleting}
-          className="bg-red-600/80 hover:bg-red-600 text-white rounded-md px-2 py-1.5 text-xs font-semibold transition-all duration-300 flex items-center justify-center space-x-1 disabled:opacity-50 flex-col "
+          className={`${!isApproved ? '' : 'col-span-2'} bg-red-600/80 hover:bg-red-600 text-white rounded-md px-2 py-1.5 text-xs font-semibold transition-all duration-300 flex ${isApproved ? 'flex-row space-x-1' : 'flex-col sm:flex-row space-y-0.5'} items-center justify-center sm:gap-0.5 disabled:opacity-50 cursor-pointer`}
         >
           {isDeleting ? (
             <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -621,7 +673,7 @@ function AdminCompactPaperCard({ paper, onApprove, onReject, onDelete, onPreview
   );
 }
 
-// Stats Card
+// Stats Card (unchanged)
 function StatsCard({ icon, title, value, bgColor, borderColor }) {
   return (
     <div className={`${bgColor} ${borderColor} border rounded-lg p-3 sm:p-4 transition-all duration-300 hover:scale-105`}>

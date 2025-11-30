@@ -1,5 +1,4 @@
-// Frontend/src/components/common/Footer.jsx - Mobile-Optimized with Grid Structure
-
+// Frontend/src/components/common/Footer.jsx
 import { Link } from "react-router-dom";
 import { 
   GitHub, 
@@ -16,15 +15,16 @@ import {
   Help,
   Twitter,
   Instagram,
-  Facebook
+  Facebook,
+  Person,
+  EmojiEvents,
+  WhatsApp
 } from "@mui/icons-material";
 import { authService } from "../../services/authService";
-import { useState } from "react";
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 
 function Footer() {
   const currentYear = new Date().getFullYear();
- // Reactive authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [currentUser, setCurrentUser] = useState(authService.getCurrentUser());
 
@@ -39,26 +39,20 @@ function Footer() {
 
   // Listen for authentication changes
   useEffect(() => {
-    // Create a custom event listener for auth changes
     const handleAuthChange = () => {
       updateAuthState();
     };
 
-    // Listen for storage changes (works for different tabs)
     const handleStorageChange = (e) => {
       if (e.key === 'token' || e.key === 'user') {
         updateAuthState();
       }
     };
 
-    // Add event listeners
     window.addEventListener('authStateChanged', handleAuthChange);
     window.addEventListener('storage', handleStorageChange);
-    
-    // Also listen for focus events to catch same-tab changes
     window.addEventListener('focus', updateAuthState);
     
-    //  Set up interval to periodically check auth state (fallback)
     const authCheckInterval = setInterval(updateAuthState, 1000);
 
     return () => {
@@ -75,22 +69,24 @@ function Footer() {
            currentUser?.userType === 'admin' ||
            ['nitinemailss@gmail.com'].includes(currentUser?.email);
   };
-  // Quick Links - Main navigation
-  const quickLinks = [
-  { label: 'Home', path: '/', icon: <Home fontSize="small" /> },
-  { label: 'Browse Papers', path: '/papers', icon: <LibraryBooks fontSize="small" /> },
-  
-  //  Only show if user is logged in
-  ...(isAuthenticated ? [
-    { label: 'Upload Paper', path: '/upload', icon: <CloudUpload fontSize="small" /> },
-    { 
-      label: isUserAdmin() ? 'Admin Panel' : 'Dashboard', 
-      path: isUserAdmin() ? '/admin/dashboard' : '/dashboard', 
-      icon: <Dashboard fontSize="small" /> 
-    }
-  ] : [])
-];
 
+  // ✅ UPDATED: Quick Links with Profile and Contributors
+  const quickLinks = [
+    { label: 'Home', path: '/', icon: <Home fontSize="small" /> },
+    { label: 'Browse Papers', path: '/papers', icon: <LibraryBooks fontSize="small" /> },
+    { label: 'Contributors', path: '/contributors', icon: <EmojiEvents fontSize="small" /> },
+    
+    // Only show if user is logged in
+    ...(isAuthenticated ? [
+      { label: 'Upload Paper', path: '/upload', icon: <CloudUpload fontSize="small" /> },
+      { 
+        label: isUserAdmin() ? 'Admin Panel' : 'Dashboard', 
+        path: isUserAdmin() ? '/admin/dashboard' : '/dashboard', 
+        icon: <Dashboard fontSize="small" /> 
+      },
+      { label: 'My Profile', path: '/profile', icon: <Person fontSize="small" /> }
+    ] : [])
+  ];
 
   // Support Links - Help and legal pages
   const supportLinks = [
@@ -102,29 +98,28 @@ function Footer() {
 
   // Social Media Links
   const socialLinks = [
+    { label: 'WhatsApp', url: "https://wa.me/916283380110", icon: <WhatsApp /> },
     { label: 'GitHub', url: 'https://github.com/webskill01', icon: <GitHub /> },
     { label: 'LinkedIn', url: 'https://www.linkedin.com/in/nitin-kumar-1110mn/', icon: <LinkedIn /> },
-     { label: 'Twitter', url: 'https://x.com/NitinKumar22655', icon: <Twitter /> },
+    { label: 'Twitter', url: 'https://x.com/NitinKumar22655', icon: <Twitter /> },
     { label: 'Instagram', url: 'https://www.instagram.com/nitin.kumar.01?igsh=MW9vMHNyNDVieG9sOA==', icon: <Instagram /> },
-    { label: 'Facebook', url: 'https://www.facebook.com/profile.php?id=100014537138957', icon: <Facebook /> }
+    { label: 'Facebook', url: 'https://www.facebook.com/profile.php?id=100014537138957', icon: <Facebook /> },
   ];
-  
 
   return (
     <footer className="bg-slate-900 border-t border-slate-700/50 mt-auto">
-      <div className="container-custom py-8 sm:py-12 ">
+      <div className="container-custom py-8 sm:py-12">
         
         {/* Main Footer Content */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-10 md:gap-20 justify-items-center ">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-10 md:gap-20 justify-items-center">
 
-          {/* Quick Links Section - Mobile-Optimized Grid */}
+          {/* Quick Links Section */}
           <div className="lg:col-span-1">
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center justify-center sm:justify-start space-x-2">
               <LibraryBooks className="text-cyan-400" fontSize="small" />
               <span>Quick Links</span>
             </h3>
             
-            {/* Mobile: 2-column grid, Desktop: 1-column */}
             <div className="grid grid-cols-2 justify-center pl-[22px] sm:grid-cols-1 gap-2 sm:gap-3">
               {quickLinks.map((link, index) => (
                 <Link
@@ -141,14 +136,13 @@ function Footer() {
             </div>
           </div>
 
-          {/* Support Links Section - Mobile-Optimized Grid */}
+          {/* Support Links Section */}
           <div className="lg:col-span-1">
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center justify-center sm:justify-start space-x-2">
               <ContactSupport className="text-cyan-400" fontSize="small" />
               <span>Support</span>
             </h3>
             
-            {/* Mobile: 2-column grid, Desktop: 1-column */}
             <div className="grid grid-cols-2 sm:grid-cols-1 gap-2 pl-[22px] sm:gap-3">
               {supportLinks.map((link, index) => (
                 <Link
@@ -172,11 +166,10 @@ function Footer() {
               <span>Connect</span>
             </h3>
 
-
             {/* Social Media Links */}
             <div>
               <p className="text-slate-400 text-sm mb-3 text-center lg:text-left">Follow us on</p>
-              <div className="flex justify-center  lg:justify-start space-x-3">
+              <div className="flex justify-center lg:justify-start space-x-3">
                 {socialLinks.map((social, index) => (
                   <a
                     key={index}
@@ -197,7 +190,7 @@ function Footer() {
         {/* Divider */}
         <div className="my-2 sm:my-8 h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent"></div>
 
-        {/* Bottom Footer - Mobile-Optimized */}
+        {/* Bottom Footer */}
         <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0">
           <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4 text-sm text-slate-400">
             <div className="flex items-center space-x-1">

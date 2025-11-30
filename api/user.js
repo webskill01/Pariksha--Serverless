@@ -1,12 +1,12 @@
 import { connectDB } from './_lib/db.js';
-import { Paper } from './_lib/models.js';
+import { Paper, User } from './_lib/models.js';
 import { auth } from './_lib/middleware.js';
 import { deleteFromR2 } from './_lib/upload.js';
 import { validateObjectId } from './_lib/utils.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
   if (req.method === 'OPTIONS') {
@@ -22,6 +22,112 @@ export default async function handler(req, res) {
     });
 
     const path = req.url.split('?')[0];
+
+    // ========== GET USER PROFILE ==========
+    if (path === '/api/user/profile' && req.method === 'GET') {
+      const user = await User.findById(req.userId).select('-password');
+      
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      return res.json({
+        success: true,
+        data: user
+      });
+    }
+
+    // ========== UPDATE USER PROFILE ==========
+    if (path === '/api/user/profile' && req.method === 'PUT') {
+      console.log('🔄 Profile update request received');
+      
+      // Parse body for both Express and Vercel
+      if (!req.body || Object.keys(req.body || {}).length === 0) {
+        const buffers = [];
+        for await (const chunk of req) {
+          buffers.push(chunk);
+        }
+        const data = Buffer.concat(buffers).toString();
+        req.body = JSON.parse(data);
+      }
+
+      console.log('📦 Request body:', req.body);
+      console.log('👤 User ID:', req.userId);
+
+      const { name, rollNumber, class: userClass, semester, year } = req.body;
+
+      // Validate required fields
+      if (!name || !rollNumber || !userClass || !semester || !year) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'All fields are required' 
+        });
+      }
+
+      // Fetch current user
+      const currentUser = await User.findById(req.userId);
+      if (!currentUser) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      console.log('📝 Current user:', currentUser.rollNumber);
+      console.log('📝 New roll number:', rollNumber);
+
+      // Check if rollNumber is being changed and if it's already taken
+      if (rollNumber.toUpperCase() !== currentUser.rollNumber.toUpperCase()) {
+        const existingUser = await User.findOne({ 
+          rollNumber: rollNumber.trim().toUpperCase(),
+          _id: { $ne: req.userId }
+        });
+
+        if (existingUser) {
+          return res.status(400).json({
+            success: false,
+            message: 'Roll number already exists'
+          });
+        }
+      }
+
+      // Update user
+      const updatedUser = await User.findByIdAndUpdate(
+        req.userId,
+        {
+          name: name.trim(),
+          rollNumber: rollNumber.trim().toUpperCase(),
+          class: userClass.trim(),
+          semester: semester.trim(),
+          year: year.trim(),
+          updatedAt: new Date()
+        },
+        { new: true, runValidators: true }
+      ).select('-password');
+
+      if (!updatedUser) {
+        return res.status(404).json({ success: false, message: 'Failed to update user' });
+      }
+
+      console.log('✅ User updated successfully:', updatedUser);
+
+      // Return updated user data
+      const userResponse = {
+        id: updatedUser._id,
+        _id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        rollNumber: updatedUser.rollNumber,
+        class: updatedUser.class,
+        semester: updatedUser.semester,
+        year: updatedUser.year,
+        uploadCount: updatedUser.uploadCount,
+        createdAt: updatedUser.createdAt
+      };
+
+      return res.json({
+        success: true,
+        message: 'Profile updated successfully',
+        data: userResponse
+      });
+    }
 
     // ========== GET USER DASHBOARD ==========
     if (path === '/api/user/dashboard' && req.method === 'GET') {
@@ -79,7 +185,13 @@ export default async function handler(req, res) {
     return res.status(404).json({ success: false, message: 'Route not found' });
 
   } catch (error) {
-    console.error('User operation error:', error);
+    console.error('❌ User operation error:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 }
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};

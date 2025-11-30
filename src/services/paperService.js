@@ -91,4 +91,19 @@ downloadPaper: async (paperId) => {
       throw error.response?.data || { message: 'Upload failed' }
     }
   },
+  // Add this to your paperService object
+
+// Get top contributors
+getTopContributors: async (limit = 10) => {
+  try {
+    const response = await api.get('/papers/contributors', { 
+      params: { limit } 
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { message: 'Failed to fetch contributors' };
+  }
+},
+
 }
+
