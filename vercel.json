@@ -82,6 +82,10 @@
       "destination": "/api/admin"
     },
     {
+      "source": "/api/user/profile",
+      "destination": "/api/user"
+    },
+    {
       "source": "/api/user/dashboard",
       "destination": "/api/user"
     },
