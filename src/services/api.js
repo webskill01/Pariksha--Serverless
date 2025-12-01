@@ -1,14 +1,13 @@
 import axios from "axios";
 
-// Simplified base URL configuration
-// In dev: Vite proxy handles /api → http://localhost:3001/api
-// In prod: /api goes to same domain (Vercel serverless)
 const api = axios.create({
-  baseURL: '/api', // Always use /api - proxy handles routing
+  baseURL: '/api',
   headers: {
     "Content-Type": "application/json",
+    "Cache-Control": "no-cache", // ✅ ADD THIS
+    "Pragma": "no-cache",         // ✅ ADD THIS
   },
-  timeout: 30000, // 30 seconds
+  timeout: 30000,
 });
 
 api.interceptors.request.use(
@@ -18,7 +17,10 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Debug logging in development only
+    // ✅ ADD THIS - Force no cache on all requests
+    config.headers['If-None-Match'] = undefined;
+    config.headers['If-Modified-Since'] = undefined;
+    
     if (import.meta.env.DEV) {
       console.log('🔹 API Request:', config.method?.toUpperCase(), config.baseURL + config.url);
     }
