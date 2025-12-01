@@ -1,4 +1,4 @@
-// src/pages/papers/BrowsePapers.jsx - Optimized with Analytics & Flexible Search
+// src/pages/papers/BrowsePapers.jsx - Fixed Page Restoration from URL
 
 import { useState, useEffect } from 'react'
 import { useSearchParams, useLocation } from 'react-router-dom'
@@ -13,7 +13,7 @@ import {
 
 import { paperService } from '../../services/paperService'
 import PaperCard from '../../components/papers/PaperCard'
-import { analytics, trackPageView } from '../../utils/analytics' // ✅ Added trackPageView
+import { analytics, trackPageView } from '../../utils/analytics'
 
 function BrowsePapers() {
   // State management
@@ -22,6 +22,7 @@ function BrowsePapers() {
   const [filterOptions, setFilterOptions] = useState({})
   const [sortBy, setSortBy] = useState('newest')
   const [showFilters, setShowFilters] = useState(false)
+  const [initialLoadDone, setInitialLoadDone] = useState(false) // ✅ Track initial load
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -45,7 +46,6 @@ function BrowsePapers() {
     trackPageView(location.pathname)
     analytics.browseView()
     
-    // ✅ Track initial visit
     if (typeof window.gtag !== 'undefined') {
       window.gtag('event', 'page_view', {
         page_title: 'Browse Papers',
@@ -54,8 +54,8 @@ function BrowsePapers() {
     }
   }, [location.pathname])
 
-  // Get filters from URL on load
-  const getFiltersFromURL = () => {
+  // ✅ Parse filters from URL (doesn't set state, just returns values)
+  const parseFiltersFromURL = () => {
     const urlFilters = {
       search: searchParams.get('search') || '',
       subject: searchParams.get('subject') || '',
@@ -63,22 +63,13 @@ function BrowsePapers() {
       semester: searchParams.get('semester') || '',
       examType: searchParams.get('examType') || '',
       year: searchParams.get('year') || '',
-      page: searchParams.get('page') || '1'
+      page: parseInt(searchParams.get('page'), 10) || 1,
+      sortBy: searchParams.get('sortBy') || 'newest'
     }
-    
-    setSearchQuery(urlFilters.search)
-    setFilters({
-      subject: urlFilters.subject,
-      class: urlFilters.class,
-      semester: urlFilters.semester,
-      examType: urlFilters.examType,
-      year: urlFilters.year
-    })
-    setCurrentPage(parseInt(urlFilters.page) || 1)
     
     // ✅ Track URL filter usage
     const hasURLFilters = Object.entries(urlFilters).some(([key, value]) => 
-      key !== 'page' && value
+      key !== 'page' && key !== 'sortBy' && value
     );
     
     if (hasURLFilters && typeof window.gtag !== 'undefined') {
@@ -88,29 +79,59 @@ function BrowsePapers() {
       });
     }
     
+    console.log('✅ Parsed URL filters:', urlFilters) // Debug
+    
     return urlFilters
   }
 
-  // Normalize text for flexible searching
+  // ✅ Comprehensive text normalization
   const normalizeText = (text) => {
     if (!text) return ''
     return text
       .toLowerCase()
-      .replace(/[.\-_]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+      .replace(/[^a-z0-9]/g, '')
   }
 
-  // ✅ IMPROVED: Flexible word-based search (order doesn't matter)
+  // ✅ Get flexible variations of a single search term
+  const getTermVariations = (term) => {
+    const normalized = normalizeText(term)
+    
+    const abbreviations = {
+      'bcom': ['bcom', 'bcom', 'bachelorofcommerce', 'commerce'],
+      'bca': ['bca', 'bca', 'bachelorofcomputer', 'computerapplication'],
+      'btech': ['btech', 'btech', 'bacheloroftechnology', 'technology'],
+      'mtech': ['mtech', 'mtech', 'masteroftechnology'],
+      'bba': ['bba', 'bba', 'bachelorofbusiness', 'businessadmin'],
+      'mba': ['mba', 'mba', 'masterofbusiness', 'businessadmin'],
+      'bsc': ['bsc', 'bsc', 'bachelorofscience', 'science'],
+      'msc': ['msc', 'msc', 'masterofscience'],
+      'mst': ['mst', 'midsemestertest', 'midterm'],
+      'mst1': ['mst1', 'mst1', 'midsemestertest1', 'firstmst'],
+      'mst2': ['mst2', 'mst2', 'midsemestertest2', 'secondmst'],
+      'cs': ['cs', 'computerscience', 'compsci'],
+      'it': ['it', 'informationtechnology', 'infotech'],
+      'ece': ['ece', 'electronics', 'communication'],
+      'ee': ['ee', 'electrical', 'engineering'],
+      'me': ['me', 'mechanical', 'engineering'],
+      'ce': ['ce', 'civil', 'engineering'],
+      'sem': ['sem', 'semester'],
+      'yr': ['yr', 'year'],
+    }
+    
+    return abbreviations[normalized] || [normalized]
+  }
+
+  // ✅ AND logic - ALL search terms must match
   const matchesSearch = (paper, query) => {
     if (!query.trim()) return true
-
-    const searchWords = normalizeText(query)
-      .split(' ')
-      .filter(word => word.length > 0)
-
-    if (searchWords.length === 0) return true
-
+    
+    const searchTerms = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(term => term.length > 0)
+    
+    if (searchTerms.length === 0) return true
+    
     const searchableText = normalizeText([
       paper.title || '',
       paper.subject || '',
@@ -120,8 +141,11 @@ function BrowsePapers() {
       paper.year || '',
       ...(paper.tags || [])
     ].join(' '))
-
-    return searchWords.every(word => searchableText.includes(word))
+    
+    return searchTerms.every(term => {
+      const variations = getTermVariations(term)
+      return variations.some(variation => searchableText.includes(variation))
+    })
   }
 
   // Client-side sorting
@@ -140,16 +164,14 @@ function BrowsePapers() {
     }
   }
 
-  // IMPROVED: Instant client-side filtering with flexible search
+  // Instant client-side filtering with flexible search
   const getFilteredPapers = () => {
     let filtered = [...allPapers]
 
-    // ✅ Flexible search query filter
     if (searchQuery.trim()) {
       filtered = filtered.filter(paper => matchesSearch(paper, searchQuery))
     }
 
-    // Other filters
     if (filters.subject) {
       filtered = filtered.filter(paper => 
         normalizeText(paper.subject).includes(normalizeText(filters.subject))
@@ -173,10 +195,10 @@ function BrowsePapers() {
     return sortPapers(filtered)
   }
 
-  // Fetch all papers once (no filtering on server)
+  // Fetch all papers once
   const fetchPapers = async () => {
     setLoading(true)
-    const startTime = Date.now() // ✅ Track load time
+    const startTime = Date.now()
     
     try {
       const response = await paperService.getBrowsePapers({ sortBy })
@@ -194,7 +216,6 @@ function BrowsePapers() {
       
       setAllPapers(Array.isArray(papersData) ? papersData : [])
       
-      // ✅ Track successful load
       const loadTime = Date.now() - startTime;
       
       if (typeof window.gtag !== 'undefined') {
@@ -204,7 +225,6 @@ function BrowsePapers() {
           load_time: loadTime,
         });
 
-        // ✅ Track load performance
         window.gtag('event', 'timing_complete', {
           name: 'browse_papers_load',
           value: loadTime,
@@ -215,10 +235,7 @@ function BrowsePapers() {
     } catch (error) {
       console.error('Failed to fetch papers:', error)
       toast.error('Failed to load papers. Please try again.')
-      
-      // ✅ Track error
       analytics.error('fetch_papers_error', error.message)
-      
       setAllPapers([])
     } finally {
       setLoading(false)
@@ -238,8 +255,6 @@ function BrowsePapers() {
       })
     } catch (error) {
       console.error('Failed to fetch filter options:', error)
-      
-      // ✅ Track error
       analytics.error('fetch_filter_options_error', error.message)
     }
   }
@@ -249,7 +264,8 @@ function BrowsePapers() {
     const allFilters = {
       search: searchQuery.trim(),
       ...filters,
-      page: currentPage.toString()
+      page: currentPage.toString(),
+      sortBy: sortBy !== 'newest' ? sortBy : '' // Only add if not default
     }
 
     const cleanFilters = Object.fromEntries(
@@ -267,7 +283,6 @@ function BrowsePapers() {
     }))
     setCurrentPage(1)
     
-    // ✅ Track filter application
     if (value) {
       analytics.filterApply(filterName, value)
       
@@ -287,7 +302,6 @@ function BrowsePapers() {
     setSortBy(newSort)
     setCurrentPage(1)
     
-    // ✅ Track sort change
     if (typeof window.gtag !== 'undefined') {
       window.gtag('event', 'sort_changed', {
         event_category: 'Browse',
@@ -314,7 +328,6 @@ function BrowsePapers() {
     setCurrentPage(1)
     setSearchParams({})
     
-    // ✅ Track clear filters
     if (typeof window.gtag !== 'undefined') {
       window.gtag('event', 'filters_cleared', {
         event_category: 'Browse',
@@ -325,13 +338,12 @@ function BrowsePapers() {
     }
   }
 
-  // Track search when query changes (with debounce effect)
+  // Track search when query changes (with debounce)
   useEffect(() => {
-    if (searchQuery.trim()) {
+    if (searchQuery.trim() && initialLoadDone) {
       const timer = setTimeout(() => {
         const resultsCount = getFilteredPapers().length
         
-        // ✅ Track search with results
         analytics.search(searchQuery, resultsCount)
         
         if (typeof window.gtag !== 'undefined') {
@@ -341,24 +353,22 @@ function BrowsePapers() {
             has_results: resultsCount > 0,
           });
         }
-      }, 1000) // Track after 1 second of no typing
+      }, 1000)
 
       return () => clearTimeout(timer)
     }
-  }, [searchQuery])
+  }, [searchQuery, initialLoadDone])
 
-  // Update filters and reset page
+  // Update URL when filters or page changes (but not on initial load)
   useEffect(() => {
-    setCurrentPage(1)
-    updateURLParams()
-  }, [searchQuery, filters])
+    if (initialLoadDone) {
+      updateURLParams()
+    }
+  }, [searchQuery, filters, currentPage, sortBy, initialLoadDone])
 
-  // Update URL when page changes
+  // Track pagination
   useEffect(() => {
-    updateURLParams()
-    
-    // ✅ Track pagination
-    if (currentPage > 1) {
+    if (currentPage > 1 && initialLoadDone) {
       if (typeof window.gtag !== 'undefined') {
         window.gtag('event', 'pagination', {
           event_category: 'Browse',
@@ -368,18 +378,46 @@ function BrowsePapers() {
         });
       }
     }
-  }, [currentPage])
+  }, [currentPage, initialLoadDone])
 
-  // Initial load only
+  // ✅ INITIAL LOAD: Parse URL params and set state, then fetch
   useEffect(() => {
-    fetchFilterOptions()
-    getFiltersFromURL()
-    fetchPapers()
-  }, [])
+    const initializeFilters = async () => {
+      // Fetch filter options first
+      await fetchFilterOptions()
+      
+      // Parse and apply URL parameters
+      const urlFilters = parseFiltersFromURL()
+      
+      console.log('✅ Setting state from URL - Page:', urlFilters.page) // Debug
+      
+      // Set all state from URL params
+      setSearchQuery(urlFilters.search)
+      setFilters({
+        subject: urlFilters.subject,
+        class: urlFilters.class,
+        semester: urlFilters.semester,
+        examType: urlFilters.examType,
+        year: urlFilters.year,
+      })
+      setCurrentPage(urlFilters.page)
+      setSortBy(urlFilters.sortBy)
+      
+      // Now fetch papers
+      await fetchPapers()
+      
+      // Mark initial load as complete
+      setInitialLoadDone(true)
+      
+      console.log('✅ Initial load complete. Current page should be:', urlFilters.page) // Debug
+    }
+    
+    initializeFilters()
+  }, []) // ✅ Run only once on mount
 
-  // Re-fetch when sort changes
+  // ✅ Re-fetch when sort changes (but not on initial load)
   useEffect(() => {
-    if (allPapers.length > 0) {
+    if (initialLoadDone && allPapers.length > 0) {
       fetchPapers()
     }
   }, [sortBy])
@@ -403,7 +441,6 @@ function BrowsePapers() {
   const handleRefresh = () => {
     fetchPapers()
     
-    // ✅ Track refresh
     if (typeof window.gtag !== 'undefined') {
       window.gtag('event', 'refresh', {
         event_category: 'Browse',
@@ -443,7 +480,6 @@ function BrowsePapers() {
                 onClick={() => {
                   setSearchQuery('')
                   
-                  // ✅ Track search clear
                   if (typeof window.gtag !== 'undefined') {
                     window.gtag('event', 'search_cleared', {
                       event_category: 'Browse',
@@ -465,7 +501,6 @@ function BrowsePapers() {
                 const newState = !showFilters;
                 setShowFilters(newState)
                 
-                // ✅ Track filter toggle
                 if (typeof window.gtag !== 'undefined') {
                   window.gtag('event', 'toggle_filters', {
                     event_category: 'Browse',
@@ -606,7 +641,6 @@ function BrowsePapers() {
             onClick={() => {
               clearAllFilters()
               
-              // ✅ Track no results action
               if (typeof window.gtag !== 'undefined') {
                 window.gtag('event', 'no_results_clear', {
                   event_category: 'Browse',
@@ -624,7 +658,12 @@ function BrowsePapers() {
           {/* Papers Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
             {currentPapers.map((paper) => (
-              <PaperCard key={paper._id} paper={paper} />
+              <PaperCard 
+                key={paper._id} 
+                paper={paper}
+                searchParams={searchParams}
+                currentFilters={{ searchQuery, ...filters, page: currentPage.toString(), sortBy }}
+              />
             ))}
           </div>
 

@@ -1,25 +1,51 @@
-// src/components/papers/PaperCard.jsx - Fully Clickable & Responsive
-
+// src/components/papers/PaperCard.jsx - Fully Clickable & Responsive with Search Params
 import { Link } from 'react-router-dom'
 import { PictureAsPdf } from '@mui/icons-material'
 import StatusBadge from '../ui/StatusBadge'
 
-function PaperCard({ paper }) {
+function PaperCard({ paper, searchParams, currentFilters }) {
   if (!paper) return null
+
+  // Build PaperDetail URL with preserved filters/page
+  const getPaperDetailUrl = () => {
+    if (!searchParams || !currentFilters) {
+      return `/papers/${paper._id}`
+    }
+    
+    // Clone current search params
+    const params = new URLSearchParams(searchParams)
+    
+    // Ensure page is set
+    if (currentFilters.page) {
+      params.set('page', currentFilters.page)
+    }
+    
+    return `/papers/${paper._id}?${params.toString()}`
+  }
 
   return (
     <Link
-      to={`/papers/${paper._id}`}
+      to={getPaperDetailUrl()}
       className="block bg-gradient-to-br from-slate-800/80 to-slate-900/80 border border-slate-700/50 rounded-lg p-3 sm:p-4 hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/20 hover:scale-[1.02] transition-all duration-300 group h-full"
+      onClick={() => {
+        // ✅ Track paper card click
+        if (typeof window.gtag !== 'undefined') {
+          window.gtag('event', 'click', {
+            event_category: 'Paper Card',
+            event_label: `view_paper_${paper._id}`,
+            paper_title: paper.title,
+            from_page: currentFilters?.page || 1,
+          })
+        }
+      }}
     >
       {/* Header with Icon and Status */}
-<div className="flex items-center justify-between mb-2 sm:mb-3">
-  <div className="p-1 rounded-lg bg-red-500/20 group-hover:bg-red-500/30 transition-colors duration-300">
-    <PictureAsPdf fontSize='medium' className="text-red-400" />
-  </div>
-  <StatusBadge status={paper.status} />
-</div>
-
+      <div className="flex items-center justify-between mb-2 sm:mb-3">
+        <div className="p-1 rounded-lg bg-red-500/20 group-hover:bg-red-500/30 transition-colors duration-300">
+          <PictureAsPdf fontSize='medium' className="text-red-400" />
+        </div>
+        <StatusBadge status={paper.status} />
+      </div>
 
       {/* Paper Title - Main Focus */}
       <h3 className="text-[13px] font-bold text-white mb-2 sm:mb-3 line-clamp-2 leading-tight group-hover:text-cyan-400 transition-colors duration-300 min-h-[2.5rem] sm:min-h-[3rem]">
@@ -36,9 +62,9 @@ function PaperCard({ paper }) {
           <span className="truncate pr-1">{paper.class || 'N/A'}</span>
           <span className="flex-shrink-0">{paper.examType || 'N/A'}</span>
         </div>
-          <div className="text-[10px] sm:text-xs text-slate-400 pt-1">
-            {paper.downloadCount} download{paper.downloadCount !== 1 ? 's' : ''}
-          </div>
+        <div className="text-[10px] sm:text-xs text-slate-400 pt-1">
+          {paper.downloadCount} download{paper.downloadCount !== 1 ? 's' : ''}
+        </div>
       </div>
 
       {/* Hover Indicator */}

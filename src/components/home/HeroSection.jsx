@@ -48,7 +48,7 @@ function HeroSection({ stats }) {
   }, [])
 
   return (
-    <div className="relative overflow-x-hidden bg-slate-900 min-h-[85vh] flex items-center w-full">
+    <div className="relative overflow-x-hidden bg-slate-900 min-h-[80vh] flex items-center w-full">
       
       {/* Background effects */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -128,7 +128,7 @@ function HeroSection({ stats }) {
                 {/* Question Papers */}
                 <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700/50 rounded-lg sm:rounded-xl p-3 sm:p-5 lg:p-6 shadow-2xl">
                   <div className="text-xl sm:text-3xl lg:text-4xl font-bold text-cyan-400 mb-2 break-words">
-                    {stats?.totalPapers?.toLocaleString() || '---'}
+                    {stats?.totalPapers?.toLocaleString() || 'Loading'}
                   </div>
                   <div className="text-slate-400 text-[10px] sm:text-xs lg:text-sm font-medium break-words">
                     Question Papers
@@ -138,7 +138,7 @@ function HeroSection({ stats }) {
                 {/* Students Joined */}
                 <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700/50 rounded-lg sm:rounded-xl p-3 sm:p-5 lg:p-6 shadow-2xl">
                   <div className="text-xl sm:text-3xl lg:text-4xl font-bold text-purple-400 mb-2 break-words">
-                    {stats?.totalUsers?.toLocaleString() || '---'}
+                    {stats?.totalUsers?.toLocaleString() || 'Data'}
                   </div>
                   <div className="text-slate-400 text-[10px] sm:text-xs lg:text-sm font-medium break-words">
                     Students Joined
@@ -148,7 +148,7 @@ function HeroSection({ stats }) {
                 {/* Total Downloads */}
                 <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700/50 rounded-lg sm:rounded-xl p-3 sm:p-5 lg:p-6 shadow-2xl">
                   <div className="text-xl sm:text-3xl lg:text-4xl font-bold text-blue-400 mb-2 break-words">
-                    {stats?.totalDownloads?.toLocaleString() || '---'}
+                    {stats?.totalDownloads?.toLocaleString() || 'Base'}
                   </div>
                   <div className="text-slate-400 text-[10px] sm:text-xs lg:text-sm font-medium break-words">
                     Total Downloads

@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
 import { toast } from 'react-toastify'
+import { useSearchParams } from 'react-router-dom'
 import { 
   PictureAsPdf,
   Download,
@@ -30,6 +31,7 @@ function PaperDetail() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [saving, setSaving] = useState(false)
   
+  
   const [editForm, setEditForm] = useState({
     title: '',
     class: '',
@@ -44,7 +46,14 @@ function PaperDetail() {
   const { id: paperId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
 
+  // Build back URL with preserved params
+const getBackLink = () => {
+  return `/papers?${searchParams.toString()}`
+}
+
+const backLink = getBackLink()
   // Get current user
   const getCurrentUser = () => {
     try {
@@ -448,19 +457,21 @@ function PaperDetail() {
           <p className="text-slate-500 mb-6 text-sm">
             The paper you're looking for doesn't exist or has been removed.
           </p>
-          <Link to="/papers" className="btn-md btn-primary">
-            Browse All Papers
-          </Link>
+          <Link to={backLink || '/papers'} className="btn-md btn-primary">
+  Browse All Papers
+</Link>
+
         </div>
       </div>
     )
   }
 
   const breadcrumbItems = [
-    { label: 'Papers', link: '/papers' },
-    { label: paper.class || 'Class' },
-    { label: paper.title || 'Paper' }
-  ]
+  { label: 'Papers', link: backLink },  // ✅ Dynamic back link
+  { label: paper?.class || 'Class' },
+  { label: paper?.title || 'Paper' }
+]
+
 
   return (
     <div className="container-custom px-3 py-4 sm:px-6 sm:py-8">
@@ -471,21 +482,22 @@ function PaperDetail() {
 
       <div className="flex items-center justify-between mb-4">
         <Link 
-          to="/papers"
-          className="inline-flex items-center space-x-2 text-slate-400 hover:text-cyan-400 transition-colors duration-200 text-sm"
-          onClick={() => {
-            // ✅ Track back navigation
-            if (typeof window.gtag !== 'undefined') {
-              window.gtag('event', 'click', {
-                event_category: 'Navigation',
-                event_label: 'back_to_browse',
-              })
-            }
-          }}
-        >
-          <ArrowBack fontSize="small" />
-          <span>Back to Browse</span>
-        </Link>
+  to={backLink}  // ✅ Dynamic back link
+  className="inline-flex items-center space-x-2 text-slate-400 hover:text-cyan-400 transition-colors duration-200 text-sm"
+  onClick={() => {
+    // ✅ Track back navigation with page info
+    if (typeof window.gtag !== 'undefined') {
+      window.gtag('event', 'click', {
+        event_category: 'Navigation',
+        event_label: `back_to_browse_page_${searchParams.get('page') || 1}`,
+      })
+    }
+  }}
+>
+  <ArrowBack fontSize="small" />
+  <span>Back to Browse</span>
+</Link>
+
 
         {isOwner && (
           <button
@@ -884,53 +896,51 @@ function PaperDetail() {
         <div className="card glass bg-slate-800/30 border border-slate-700/50">
           <div className="p-3 sm:p-4">
             <h3 className="text-sm sm:text-base font-semibold text-white mb-3">Find More Papers</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <Link 
-                to={`/papers?subject=${encodeURIComponent(paper.subject || '')}`}
-                className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
-                onClick={() => {
-                  // ✅ Track filter navigation
-                  analytics.filterApply('subject', paper.subject)
-                }}
-              >
-                <span className='flex items-center'>More {paper.subject} Papers <ArrowForward fontSize='small'/></span>
-              </Link>
-              <Link 
-                to={`/papers?class=${encodeURIComponent(paper.class || '')}`}
-                className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
-                onClick={() => {
-                  // ✅ Track filter navigation
-                  analytics.filterApply('class', paper.class)
-                }}
-              >
-                <span className='flex items-center'>More {paper.class} Papers <ArrowForward fontSize='small'/></span>
-              </Link>
-              <Link 
-                to={`/papers?examType=${paper.examType}`}
-                className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
-                onClick={() => {
-                  // ✅ Track filter navigation
-                  analytics.filterApply('examType', paper.examType)
-                }}
-              >
-                <span className='flex items-center'>More {paper.examType} Papers <ArrowForward fontSize='small'/></span>
-              </Link>
-              <Link 
-                to="/papers"
-                className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
-                onClick={() => {
-                  // ✅ Track browse all click
-                  if (typeof window.gtag !== 'undefined') {
-                    window.gtag('event', 'click', {
-                      event_category: 'Navigation',
-                      event_label: 'browse_all_papers',
-                    })
-                  }
-                }}
-              >
-                <span className='flex items-center'>Browse All Papers <ArrowForward fontSize='small'/></span>
-              </Link>
-            </div>
+            {/* Replace the Quick Navigation section around line 800+ */}
+<div className="grid grid-cols-2 gap-2">
+  <Link 
+    to={`/papers?${searchParams.toString()}&subject=${encodeURIComponent(paper.subject || '')}`}
+    className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
+    onClick={() => {
+      analytics.filterApply('subject', paper.subject)
+    }}
+  >
+    <span className='flex items-center'>More {paper.subject} Papers <ArrowForward fontSize='small'/></span>
+  </Link>
+  <Link 
+    to={`/papers?${searchParams.toString()}&class=${encodeURIComponent(paper.class || '')}`}
+    className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
+    onClick={() => {
+      analytics.filterApply('class', paper.class)
+    }}
+  >
+    <span className='flex items-center'>More {paper.class} Papers <ArrowForward fontSize='small'/></span>
+  </Link>
+  <Link 
+    to={`/papers?${searchParams.toString()}&examType=${encodeURIComponent(paper.examType || '')}`}
+    className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
+    onClick={() => {
+      analytics.filterApply('examType', paper.examType)
+    }}
+  >
+    <span className='flex items-center'>More {paper.examType} Papers <ArrowForward fontSize='small'/></span>
+  </Link>
+  <Link 
+    to={backLink}  // ✅ Use preserved back link
+    className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200 text-xs sm:text-sm"
+    onClick={() => {
+      if (typeof window.gtag !== 'undefined') {
+        window.gtag('event', 'click', {
+          event_category: 'Navigation',
+          event_label: 'browse_all_papers',
+        })
+      }
+    }}
+  >
+    <span className='flex items-center'>Browse All Papers <ArrowForward fontSize='small'/></span>
+  </Link>
+</div>
+
           </div>
         </div>
       </div>

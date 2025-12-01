@@ -3,8 +3,9 @@ import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
 import { CssBaseline } from "@mui/material";
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, Slide } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import './styles/customToast.css'; // ✅ Import custom toast styles
 
 import muiTheme from "./theme/muiTheme";
 import { trackPageView } from './utils/analytics';
@@ -105,15 +106,22 @@ const App = () => {
           
           <Footer />
           
+          {/* ✅ Enhanced ToastContainer with modern styling */}
           <ToastContainer
             position="top-right"
-            autoClose={3000}
+            autoClose={4000}
             hideProgressBar={false}
             newestOnTop
             closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
             draggable
+            pauseOnHover
             theme="dark"
             limit={3}
+            transition={Slide}
+            icon={true}
+            style={{ zIndex: 9999 }}
           />
         </div>
       </Router>
